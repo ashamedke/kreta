@@ -92,6 +92,11 @@ class RenderJob {
   final DateTime startedAt;
   final DateTime? completedAt;
 
+  /// Whether the analysis-log overlay should be drawn into this export.
+  /// Defaults to false — the board renders in isolation unless the user
+  /// explicitly opts in from the export settings.
+  final bool includeAnalysisLog;
+
   RenderJob({
     String? id,
     required this.projectId,
@@ -103,6 +108,7 @@ class RenderJob {
     this.errorMessage,
     DateTime? startedAt,
     this.completedAt,
+    this.includeAnalysisLog = false,
   })  : id = id ?? const Uuid().v4(),
         startedAt = startedAt ?? DateTime.now();
 
@@ -125,6 +131,7 @@ class RenderJob {
       completedAt: json['completedAt'] != null
           ? DateTime.parse(json['completedAt'] as String)
           : null,
+      includeAnalysisLog: json['includeAnalysisLog'] as bool? ?? false,
     );
   }
 
@@ -140,6 +147,7 @@ class RenderJob {
       'errorMessage': errorMessage,
       'startedAt': startedAt.toIso8601String(),
       'completedAt': completedAt?.toIso8601String(),
+      'includeAnalysisLog': includeAnalysisLog,
     };
   }
 

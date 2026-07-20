@@ -28,7 +28,19 @@ class ChessBoard2D extends StatelessWidget {
   final String? lastMoveFrom;
   final String? lastMoveTo;
   final bool isFlipped;
+
+  /// Width of the widget. Historically doubled as "size" for a square
+  /// board — that usage still works unchanged (omit [height] and it
+  /// stays square).
   final double size;
+
+  /// Optional explicit height. When null, defaults to [size] (square,
+  /// the original behavior). Pass a different value to fill a non-square
+  /// region edge-to-edge — e.g. a full 1920x1080 export canvas — without
+  /// letterboxing. The board texture and grid stretch to fill exactly;
+  /// there is no aspect-ratio preservation once this is set.
+  final double? height;
+
   final double? animationProgress;
   final String? animatingPiece;
   final String? animateFrom;
@@ -43,6 +55,7 @@ class ChessBoard2D extends StatelessWidget {
     this.lastMoveTo,
     this.isFlipped = false,
     required this.size,
+    this.height,
     this.animationProgress,
     this.animatingPiece,
     this.animateFrom,
@@ -51,13 +64,15 @@ class ChessBoard2D extends StatelessWidget {
     this.arrows = const [],
   }) : super(key: key);
 
+  double get _resolvedHeight => height ?? size;
+
   @override
   Widget build(BuildContext context) {
     final bool isPieceAnimating = animationProgress != null;
 
     return SizedBox(
       width: size,
-      height: size,
+      height: _resolvedHeight,
       child: Stack(
         children: [
           // Static layer: board, highlights, check glow, labels, arrows,
@@ -115,19 +130,20 @@ class _BoardGeometry {
   static const double innerRight = 707.0;
   static const double innerBot = 707.0;
 
-  final double scale;
+  final double scaleX, scaleY;
   final double bL, bT, bR, bB;
   final double sqW, sqH;
   final bool isFlipped;
 
   _BoardGeometry(Size size, this.isFlipped)
-      : scale = size.width / cropSize,
+      : scaleX = size.width / cropSize,
+        scaleY = size.height / cropSize,
         bL = innerLeft * (size.width / cropSize),
-        bT = innerTop * (size.width / cropSize),
+        bT = innerTop * (size.height / cropSize),
         bR = (cropSize - innerRight) * (size.width / cropSize),
-        bB = (cropSize - innerBot) * (size.width / cropSize),
+        bB = (cropSize - innerBot) * (size.height / cropSize),
         sqW = (size.width - innerLeft * (size.width / cropSize) - (cropSize - innerRight) * (size.width / cropSize)) / 8.0,
-        sqH = (size.height - innerTop * (size.width / cropSize) - (cropSize - innerBot) * (size.width / cropSize)) / 8.0;
+        sqH = (size.height - innerTop * (size.height / cropSize) - (cropSize - innerBot) * (size.height / cropSize)) / 8.0;
 
   Offset origin(int col, int row) => Offset(
         bL + (isFlipped ? 7 - col : col) * sqW,

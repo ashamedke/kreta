@@ -10,7 +10,7 @@ class RenderService extends ChangeNotifier {
   bool get isRendering => _currentJob != null && _currentJob!.status == RenderStatus.rendering;
 
   /// Initializes the render job. The actual rendering is driven by the UI.
-  Future<void> startRender(Project project, RenderPreset preset, String outputDir, {int totalFrames = 0}) async {
+  Future<void> startRender(Project project, RenderPreset preset, String outputDir, {int totalFrames = 0, bool includeAnalysisLog = false}) async {
     if (isRendering) {
       throw StateError('A render job is already in progress.');
     }
@@ -23,6 +23,7 @@ class RenderService extends ChangeNotifier {
       currentFrame: 0,
       status: RenderStatus.rendering,
       outputPath: outputDir,
+      includeAnalysisLog: includeAnalysisLog,
     );
 
     notifyListeners();
@@ -41,6 +42,7 @@ class RenderService extends ChangeNotifier {
         outputPath: _currentJob!.outputPath,
         errorMessage: _currentJob!.errorMessage,
         startedAt: _currentJob!.startedAt,
+        includeAnalysisLog: _currentJob!.includeAnalysisLog,
       );
       notifyListeners();
     }
@@ -60,6 +62,7 @@ class RenderService extends ChangeNotifier {
         errorMessage: _currentJob!.errorMessage,
         startedAt: _currentJob!.startedAt,
         completedAt: DateTime.now(),
+        includeAnalysisLog: _currentJob!.includeAnalysisLog,
       );
       notifyListeners();
     }
@@ -79,6 +82,7 @@ class RenderService extends ChangeNotifier {
         errorMessage: error,
         startedAt: _currentJob!.startedAt,
         completedAt: _currentJob!.completedAt,
+        includeAnalysisLog: _currentJob!.includeAnalysisLog,
       );
       notifyListeners();
     }
@@ -98,6 +102,7 @@ class RenderService extends ChangeNotifier {
         errorMessage: _currentJob!.errorMessage,
         startedAt: _currentJob!.startedAt,
         completedAt: _currentJob!.completedAt,
+        includeAnalysisLog: _currentJob!.includeAnalysisLog,
       );
       notifyListeners();
     }

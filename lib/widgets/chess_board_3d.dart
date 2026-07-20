@@ -6,7 +6,21 @@ class ChessBoard3D extends StatefulWidget {
   final String? lastMoveFrom;
   final String? lastMoveTo;
   final bool isFlipped;
+
+  /// Width of the widget. As with ChessBoard2D, omitting [height] keeps
+  /// this square (the original behavior).
   final double size;
+
+  /// Optional explicit height for a non-square viewport (e.g. a full
+  /// 1920x1080 export canvas). `Cube`'s perspective projection is set up
+  /// from the widget's own render-box size each frame, so an unequal
+  /// width/height here should produce a correctly-proportioned (not
+  /// stretched) 3D view that simply fills a wider or taller viewport —
+  /// unlike the 2D board, there's no source-image stretching concern.
+  /// That said, this hasn't been visually verified against the actual
+  /// `flutter_cube` behavior — check the export before shipping it.
+  final double? height;
+
   final double? animationProgress;
   final String? animatingPiece;
   final String? animateFrom;
@@ -20,6 +34,7 @@ class ChessBoard3D extends StatefulWidget {
     this.lastMoveTo,
     this.isFlipped = false,
     required this.size,
+    this.height,
     this.animationProgress,
     this.animatingPiece,
     this.animateFrom,
@@ -181,7 +196,7 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
   Widget build(BuildContext context) {
     return SizedBox(
       width: widget.size,
-      height: widget.size,
+      height: widget.height ?? widget.size,
       child: Cube(
         onSceneCreated: _onSceneCreated,
       ),

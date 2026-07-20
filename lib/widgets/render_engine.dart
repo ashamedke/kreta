@@ -15,12 +15,20 @@ class RenderEngineWidget extends StatelessWidget {
   final VirtualClock clock;
   final List<ResolvedTiming> resolvedTimings;
 
+  /// Whether to draw the analysis-log (annotation) overlay at all. This is
+  /// decoupled from the board layout on purpose: by default the export is
+  /// the board in isolation, with no space reserved for the log. When
+  /// enabled, the log draws as an overlay on top of the board rather than
+  /// pushing the board into a smaller centred region.
+  final bool showAnalysisLog;
+
   const RenderEngineWidget({
     Key? key,
     required this.project,
     required this.preset,
     required this.clock,
     required this.resolvedTimings,
+    this.showAnalysisLog = false,
   }) : super(key: key);
 
   @override
@@ -125,12 +133,13 @@ class RenderEngineWidget extends StatelessWidget {
       }
     }
 
-    // Wrap in a fixed size box matching the preset resolution
-    // Layout: board fills ~75% of height centred, annotation bar below it
+    // Wrap in a fixed size box matching the preset resolution.
+    // The board occupies the entire canvas edge-to-edge by default — no
+    // reserved margin, no reserved space for the analysis log. The log
+    // (when enabled) draws as an overlay on top, not as a layout sibling
+    // that shrinks the board.
     final double h = preset.height.toDouble();
     final double w = preset.width.toDouble();
-    final double boardSize = h * 0.82;
-    final double sidePad = (w - boardSize) / 2;
 
     return SizedBox(
       width: w,
@@ -139,15 +148,12 @@ class RenderEngineWidget extends StatelessWidget {
         color: Colors.black,
         child: Stack(
           children: [
-            // Board — centred
-            Positioned(
-              left: sidePad,
-              top: (h - boardSize) / 2 - h * 0.05,
-              width: boardSize,
-              height: boardSize,
+            // Board — fills the full export resolution exactly, no dead space.
+            Positioned.fill(
               child: ChessBoard2D(
                 fen: fen,
-                size: boardSize,
+                size: w,
+                height: h,
                 lastMoveFrom: lastMoveFrom,
                 lastMoveTo: lastMoveTo,
                 animationProgress: plyAnimationProgress,
@@ -158,26 +164,28 @@ class RenderEngineWidget extends StatelessWidget {
                 arrows: currentArrows,
               ),
             ),
-            // Annotation bar at bottom
-            Positioned(
-              left: sidePad,
-              right: sidePad,
-              bottom: h * 0.04,
-              height: h * 0.12,
-              child: Container(
-                padding: EdgeInsets.symmetric(horizontal: w * 0.02, vertical: h * 0.01),
-                decoration: BoxDecoration(
-                  color: const Color(0xDD161B22),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: const Color(0xFF30363D), width: 2),
-                ),
-                child: TerminalText(
-                  fullText: annotationText.isEmpty ? '' : annotationText,
-                  revealProgress: textRevealProgress,
-                  fontSize: h * 0.028,
+            // Analysis log — optional overlay, off by default. Drawn on
+            // top of the board rather than reserving its own layout band.
+            if (showAnalysisLog)
+              Positioned(
+                left: w * 0.06,
+                right: w * 0.06,
+                bottom: h * 0.04,
+                height: h * 0.12,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: w * 0.02, vertical: h * 0.01),
+                  decoration: BoxDecoration(
+                    color: const Color(0xDD161B22),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF30363D), width: 2),
+                  ),
+                  child: TerminalText(
+                    fullText: annotationText.isEmpty ? '' : annotationText,
+                    revealProgress: textRevealProgress,
+                    fontSize: h * 0.028,
+                  ),
                 ),
               ),
-            ),
             // Floating Texts
             for (final text in currentFloatingTexts)
               Positioned(

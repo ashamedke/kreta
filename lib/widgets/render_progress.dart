@@ -329,7 +329,13 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       final totalFrames = widget.isThumbnail ? 1 : (totalDurationMs / 1000 * _clock.fps).ceil();
       
       // Update job with total frames
-      renderService.startRender(widget.project, widget.renderJob.preset, widget.renderJob.outputPath ?? '', totalFrames: totalFrames);
+      renderService.startRender(
+        widget.project,
+        widget.renderJob.preset,
+        widget.renderJob.outputPath ?? '',
+        totalFrames: totalFrames,
+        includeAnalysisLog: widget.renderJob.includeAnalysisLog,
+      );
       
       // Calculate Audio Cues
       List<AudioCue> audioCues = [];
@@ -507,6 +513,7 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
                 preset: widget.renderJob.preset,
                 clock: _clock,
                 resolvedTimings: _resolvedTimings,
+                showAnalysisLog: widget.renderJob.includeAnalysisLog,
               ),
             ),
           ),
