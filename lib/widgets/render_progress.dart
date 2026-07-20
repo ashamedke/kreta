@@ -92,6 +92,12 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
           else if (isCapture) soundFile = 'capture.wav';
           
           audioCues.add(AudioCue('$assetsDir\\assets\\audio\\$soundFile', hitTimeMs));
+          
+          final textLen = (ply.annotation ?? '').length;
+          if (textLen > 0) {
+             audioCues.add(AudioCue('$assetsDir\\assets\\audio\\typing.wav', hitTimeMs));
+          }
+          
           accumulatedTimeMs += plyTotalTime;
         }
       }
@@ -114,10 +120,12 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         } else {
            _clock.seekToFrame(f);
         }
+        final completer = Completer<void>();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          completer.complete();
+        });
         setState(() {}); // Rebuild RenderEngineWidget with new clock time
-        
-        // Wait for frame to paint
-        await Future.delayed(const Duration(milliseconds: 16)); 
+        await completer.future;
         
         // Capture image
         final boundary = _renderKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;

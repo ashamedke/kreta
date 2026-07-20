@@ -160,7 +160,7 @@ class FfmpegService extends ChangeNotifier {
       'yuv420p',
     ]);
 
-    if (audioPath != null) {
+    if (finalAudioOut.isNotEmpty) {
       args.addAll([
         '-c:a',
         'aac',
@@ -192,7 +192,9 @@ class FfmpegService extends ChangeNotifier {
 
     final exitCode = await process.exitCode;
     if (exitCode != 0) {
-      throw Exception('FFmpeg failed (exit code $exitCode):\n${stderrBuffer.toString()}');
+      final err = stderrBuffer.toString();
+      final truncated = err.length > 1000 ? err.substring(err.length - 1000) : err;
+      throw Exception('FFmpeg failed (exit code $exitCode):\n...$truncated');
     }
   }
 
