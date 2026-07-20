@@ -4,9 +4,13 @@ import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/project.dart';
+import 'package:file_picker/file_picker.dart';
+import '../models/project.dart';
 import '../models/render_job.dart';
+import '../models/timeline.dart';
 import '../services/project_service.dart';
 import '../services/timing_resolver.dart';
+import '../services/preview_sound_service.dart';
 import '../utils/virtual_clock.dart';
 import '../widgets/render_engine.dart';
 import '../widgets/timeline_editor.dart';
@@ -82,11 +86,35 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       final timing = i < _resolvedTimings.length ? _resolvedTimings[i] : ResolvedTiming(holdDurationMs: 2000, transitionDurationMs: 500, appliedRules: []);
       final total = timing.holdDurationMs + timing.transitionDurationMs;
       
+      final transitionEnd = accum + timing.transitionDurationMs;
+      if (previousTime < transitionEnd && _realtimeMs >= transitionEnd && _isPlaying) {
+         final ply = _project!.game.plies[i];
+         PreviewSoundService().playMoveSound(
+            isCapture: ply.capturedPiece != null,
+            isPromotion: ply.isPromotion,
+            isCheck: ply.isCheck,
+         );
+      }
+      
       if (_realtimeMs >= accum && _realtimeMs < accum + total) {
         if (_currentPlyIndex != i + 1) {
           _currentPlyIndex = i + 1;
           _loadAnnotation();
         }
+        final ply = _project!.game.plies[i];
+        final textLen = (ply.annotation ?? '').length;
+        if (textLen > 0 && _isPlaying) {
+            final holdTime = _realtimeMs - (accum + timing.transitionDurationMs);
+            final typeTimeMs = (textLen / 20.0) * 1000.0;
+            if (holdTime > 0 && holdTime < typeTimeMs) {
+                PreviewSoundService().startTyping();
+            } else {
+                PreviewSoundService().stopTyping();
+            }
+        } else {
+            PreviewSoundService().stopTyping();
+        }
+        
         return;
       }
       accum += total;
@@ -138,6 +166,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
       } else {
         _ticker.stop();
         _lastTick = null;
+        PreviewSoundService().stopTyping();
       }
     });
   }
@@ -221,14 +250,15 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                 ),
                 
                 // Right Column: Settings and Annotations
-                Container(
-                  width: 350,
-                  decoration: const BoxDecoration(
-                    border: Border(left: BorderSide(color: Color(0xFF30363D))),
-                    color: Color(0xFF161B22),
-                  ),
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
+                Expanded(
+                  flex: 3,
+                  child: Container(
+                    decoration: const BoxDecoration(
+                      border: Border(left: BorderSide(color: Color(0xFF30363D))),
+                      color: Color(0xFF161B22),
+                    ),
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
                     children: [
                       // Annotation Editor
                       const Text('Annotation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -264,6 +294,125 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                         contentPadding: EdgeInsets.zero,
                         controlAffinity: ListTileControlAffinity.leading,
                       ),
+                      const SizedBox(height: 16),
+                      
+                      // Floating Texts Section
+                      const Text('Floating Texts', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length)
+                        ..._project!.game.plies[_currentPlyIndex - 1].floatingTexts.asMap().entries.map((e) {
+                           int idx = e.key;
+                           var t = e.value;
+                           return ListTile(
+                             title: Text(t.text),
+                             subtitle: Text('x: ${t.x.toStringAsFixed(2)}, y: ${t.y.toStringAsFixed(2)}'),
+                             trailing: IconButton(
+                               icon: const Icon(Icons.delete, color: Colors.red),
+                               onPressed: () {
+                                  setState(() {
+                                    var ply = _project!.game.plies[_currentPlyIndex - 1];
+                                    var newTexts = List<FloatingText>.from(ply.floatingTexts)..removeAt(idx);
+                                    _project!.game.plies[_currentPlyIndex - 1] = ply.copyWith(floatingTexts: newTexts);
+                                    context.read<ProjectService>().saveProject(_project!);
+                                  });
+                               },
+                             ),
+                           );
+                        }).toList(),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Text Label'),
+                        onPressed: () {
+                          if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length) {
+                             setState(() {
+                               var ply = _project!.game.plies[_currentPlyIndex - 1];
+                               var newTexts = List<FloatingText>.from(ply.floatingTexts)..add(const FloatingText(text: "New Text", x: 0.5, y: 0.1));
+                               _project!.game.plies[_currentPlyIndex - 1] = ply.copyWith(floatingTexts: newTexts);
+                               context.read<ProjectService>().saveProject(_project!);
+                             });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Arrows Section
+                      const Text('Arrows', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length)
+                        ..._project!.game.plies[_currentPlyIndex - 1].arrows.asMap().entries.map((e) {
+                           int idx = e.key;
+                           var a = e.value;
+                           return ListTile(
+                             title: Text('${a.fromSquare} -> ${a.toSquare}'),
+                             trailing: IconButton(
+                               icon: const Icon(Icons.delete, color: Colors.red),
+                               onPressed: () {
+                                  setState(() {
+                                    var ply = _project!.game.plies[_currentPlyIndex - 1];
+                                    var newArrows = List<BoardArrow>.from(ply.arrows)..removeAt(idx);
+                                    _project!.game.plies[_currentPlyIndex - 1] = ply.copyWith(arrows: newArrows);
+                                    context.read<ProjectService>().saveProject(_project!);
+                                  });
+                               },
+                             ),
+                           );
+                        }).toList(),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.add),
+                        label: const Text('Add Arrow'),
+                        onPressed: () {
+                          if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length) {
+                             setState(() {
+                               var ply = _project!.game.plies[_currentPlyIndex - 1];
+                               var newArrows = List<BoardArrow>.from(ply.arrows)..add(BoardArrow(fromSquare: "e2", toSquare: "e4"));
+                               _project!.game.plies[_currentPlyIndex - 1] = ply.copyWith(arrows: newArrows);
+                               context.read<ProjectService>().saveProject(_project!);
+                             });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Media Overlays Section
+                      const Text('Media Overlays', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      ..._project!.timeline.layers.where((l) => l.type == LayerType.overlay).map((layer) {
+                           return ListTile(
+                             title: Text(layer.assetPath.split('\\').last),
+                             subtitle: Text('Start: ${layer.startTimeMs}ms'),
+                             trailing: IconButton(
+                               icon: const Icon(Icons.delete, color: Colors.red),
+                               onPressed: () {
+                                  setState(() {
+                                    var newLayers = List<Layer>.from(_project!.timeline.layers)..removeWhere((l) => l.id == layer.id);
+                                    _project = _project!.copyWith(timeline: _project!.timeline.copyWith(layers: newLayers));
+                                    context.read<ProjectService>().saveProject(_project!);
+                                  });
+                               },
+                             ),
+                           );
+                      }).toList(),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.image),
+                        label: const Text('Add Image/Video'),
+                        onPressed: () async {
+                           FilePickerResult? result = await FilePicker.platform.pickFiles(
+                             type: FileType.media,
+                           );
+                           if (result != null && result.files.single.path != null) {
+                              setState(() {
+                                var newLayer = Layer(
+                                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                                  type: LayerType.overlay,
+                                  assetPath: result.files.single.path!,
+                                  startTimeMs: _realtimeMs.toInt(),
+                                  endTimeMs: _realtimeMs.toInt() + 5000, // Default 5 seconds
+                                  x: 0.1, y: 0.1, width: 0.3, height: 0.3,
+                                );
+                                var newLayers = List<Layer>.from(_project!.timeline.layers)..add(newLayer);
+                                _project = _project!.copyWith(timeline: _project!.timeline.copyWith(layers: newLayers));
+                                context.read<ProjectService>().saveProject(_project!);
+                              });
+                           }
+                        },
+                      ),
                       const SizedBox(height: 24),
                       
                       // Timing Panel
@@ -280,6 +429,7 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
                       ),
                     ],
                   ),
+                ),
                 ),
               ],
             ),

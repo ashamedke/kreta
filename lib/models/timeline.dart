@@ -13,6 +13,10 @@ class Layer {
   final double opacity;
   final double volume;
   final bool loop;
+  final double? x;
+  final double? y;
+  final double? width;
+  final double? height;
 
   const Layer({
     required this.id,
@@ -24,6 +28,10 @@ class Layer {
     this.opacity = 1.0,
     this.volume = 1.0,
     this.loop = false,
+    this.x,
+    this.y,
+    this.width,
+    this.height,
   });
 
   factory Layer.fromJson(Map<String, dynamic> json) {
@@ -40,6 +48,10 @@ class Layer {
       opacity: (json['opacity'] as num? ?? 1.0).toDouble(),
       volume: (json['volume'] as num? ?? 1.0).toDouble(),
       loop: json['loop'] as bool? ?? false,
+      x: (json['x'] as num?)?.toDouble(),
+      y: (json['y'] as num?)?.toDouble(),
+      width: (json['width'] as num?)?.toDouble(),
+      height: (json['height'] as num?)?.toDouble(),
     );
   }
 
@@ -54,7 +66,43 @@ class Layer {
       'opacity': opacity,
       'volume': volume,
       'loop': loop,
+      'x': x,
+      'y': y,
+      'width': width,
+      'height': height,
     };
+  }
+
+  Layer copyWith({
+    String? id,
+    LayerType? type,
+    String? assetPath,
+    String? sourceTag,
+    int? startTimeMs,
+    int? endTimeMs,
+    double? opacity,
+    double? volume,
+    bool? loop,
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+  }) {
+    return Layer(
+      id: id ?? this.id,
+      type: type ?? this.type,
+      assetPath: assetPath ?? this.assetPath,
+      sourceTag: sourceTag ?? this.sourceTag,
+      startTimeMs: startTimeMs ?? this.startTimeMs,
+      endTimeMs: endTimeMs ?? this.endTimeMs,
+      opacity: opacity ?? this.opacity,
+      volume: volume ?? this.volume,
+      loop: loop ?? this.loop,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      width: width ?? this.width,
+      height: height ?? this.height,
+    );
   }
 }
 

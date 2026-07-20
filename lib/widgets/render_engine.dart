@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/project.dart';
 import '../models/render_job.dart';
+import '../models/timeline.dart';
 import '../services/timing_resolver.dart';
 import '../utils/virtual_clock.dart';
 import 'chess_board_2d.dart';
@@ -37,6 +39,11 @@ class RenderEngineWidget extends StatelessWidget {
     String? animateTo;
     String annotationText = '';
     bool isFlagged = false;
+    bool isCheck = false;
+    double textRevealProgress = 1.0;
+    List<FloatingText> currentFloatingTexts = [];
+    List<BoardArrow> currentArrows = [];
+    List<Layer> activeOverlays = [];
 
     for (int i = 0; i < project.game.plies.length; i++) {
       final ply = project.game.plies[i];
@@ -47,6 +54,9 @@ class RenderEngineWidget extends StatelessWidget {
       if (currentTimeMs >= accumulatedTimeMs && currentTimeMs < accumulatedTimeMs + plyTotalTime) {
         annotationText = ply.annotation ?? '';
         isFlagged = ply.isFlagged;
+        isCheck = ply.isCheck;
+        currentFloatingTexts = ply.floatingTexts;
+        currentArrows = ply.arrows;
         
         final timeInPly = currentTimeMs - accumulatedTimeMs;
         
@@ -68,11 +78,24 @@ class RenderEngineWidget extends StatelessWidget {
             lastMoveFrom = prevPly.fromSquare;
             lastMoveTo = prevPly.toSquare;
           }
+          textRevealProgress = 0.0;
         } else {
           // Holding
           fen = ply.resultingFen;
           lastMoveFrom = ply.fromSquare;
           lastMoveTo = ply.toSquare;
+          
+          final holdTime = timeInPly - timing.transitionDurationMs;
+          final textLen = annotationText.length;
+          if (textLen > 0) {
+             final typeTimeMs = (textLen / 20.0) * 1000.0;
+             textRevealProgress = holdTime / typeTimeMs;
+             if (textRevealProgress > 1.0) textRevealProgress = 1.0;
+             if (textRevealProgress < 0.0) textRevealProgress = 0.0;
+          } else {
+             textRevealProgress = 1.0;
+          }
+          // In holding phase, check applies. (Actually, check applies as soon as the move finishes, which is the hold phase).
         }
         break;
       }
@@ -85,6 +108,19 @@ class RenderEngineWidget extends StatelessWidget {
         lastMoveTo = ply.toSquare;
         annotationText = ply.annotation ?? '';
         isFlagged = ply.isFlagged;
+        isCheck = ply.isCheck;
+        currentFloatingTexts = ply.floatingTexts;
+        currentArrows = ply.arrows;
+      }
+    }
+
+    // Determine active media overlays
+    for (var layer in project.timeline.layers) {
+      if (layer.type == LayerType.overlay) {
+         if (currentTimeMs >= layer.startTimeMs && 
+             (layer.endTimeMs == null || currentTimeMs < layer.endTimeMs!)) {
+            activeOverlays.add(layer);
+         }
       }
     }
 
@@ -117,6 +153,8 @@ class RenderEngineWidget extends StatelessWidget {
                 animatingPiece: animatingPiece,
                 animateFrom: animateFrom,
                 animateTo: animateTo,
+                isCheck: isCheck,
+                arrows: currentArrows,
               ),
             ),
             // Annotation bar at bottom
@@ -134,11 +172,41 @@ class RenderEngineWidget extends StatelessWidget {
                 ),
                 child: TerminalText(
                   fullText: annotationText.isEmpty ? '' : annotationText,
-                  revealProgress: 1.0,
+                  revealProgress: textRevealProgress,
                   fontSize: h * 0.028,
                 ),
               ),
             ),
+            // Floating Texts
+            for (final text in currentFloatingTexts)
+              Positioned(
+                left: w * text.x,
+                top: h * text.y,
+                child: Text(
+                  text.text,
+                  style: TextStyle(
+                    color: Color(int.parse(text.color.replaceFirst('#', '0xFF'))),
+                    fontSize: text.fontSize * h,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            // Media Overlays
+            for (final layer in activeOverlays)
+              Positioned(
+                left: w * (layer.x ?? 0.0),
+                top: h * (layer.y ?? 0.0),
+                width: w * (layer.width ?? 1.0),
+                height: h * (layer.height ?? 1.0),
+                child: Opacity(
+                  opacity: layer.opacity,
+                  child: Image.file(
+                    File(layer.assetPath),
+                    fit: BoxFit.contain,
+                    errorBuilder: (ctx, err, stack) => const Center(child: Icon(Icons.broken_image, color: Colors.red)),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

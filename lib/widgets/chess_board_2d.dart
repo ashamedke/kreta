@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
 import '../services/asset_cache_service.dart';
+import '../models/game.dart' show BoardArrow;
 
 class ChessBoard2D extends StatelessWidget {
   final String fen;
@@ -12,6 +14,8 @@ class ChessBoard2D extends StatelessWidget {
   final String? animatingPiece;
   final String? animateFrom;
   final String? animateTo;
+  final bool isCheck;
+  final List<BoardArrow> arrows;
 
   const ChessBoard2D({
     Key? key,
@@ -24,6 +28,8 @@ class ChessBoard2D extends StatelessWidget {
     this.animatingPiece,
     this.animateFrom,
     this.animateTo,
+    this.isCheck = false,
+    this.arrows = const [],
   }) : super(key: key);
 
   @override
@@ -41,6 +47,8 @@ class ChessBoard2D extends StatelessWidget {
           animatingPiece: animatingPiece,
           animateFrom: animateFrom,
           animateTo: animateTo,
+          isCheck: isCheck,
+          arrows: arrows,
         ),
       ),
     );
@@ -56,6 +64,8 @@ class ChessBoardPainter extends CustomPainter {
   final String? animatingPiece;
   final String? animateFrom;
   final String? animateTo;
+  final bool isCheck;
+  final List<BoardArrow> arrows;
 
   // Board 6 geometry in the 729x729 crop:
   // The full source image is 1366x768. The board crop starts at (318,19).
@@ -77,6 +87,8 @@ class ChessBoardPainter extends CustomPainter {
     this.animatingPiece,
     this.animateFrom,
     this.animateTo,
+    this.isCheck = false,
+    this.arrows = const [],
   });
 
   @override
@@ -125,10 +137,40 @@ class ChessBoardPainter extends CustomPainter {
     if (lastMoveFrom != null) highlight(lastMoveFrom!);
     if (lastMoveTo   != null) highlight(lastMoveTo!);
 
+    // Highlight check in red
+    if (isCheck) {
+      final fenParts = fen.split(' ');
+      if (fenParts.length >= 2) {
+        final activeColor = fenParts[1];
+        final kingChar = activeColor == 'w' ? 'K' : 'k';
+        final fenRows = fenParts[0].split('/');
+        for (int r = 0; r < 8; r++) {
+          int c = 0;
+          for (final ch in fenRows[r].split('')) {
+            if (RegExp(r'[1-8]').hasMatch(ch)) {
+              c += int.parse(ch);
+            } else {
+              if (ch == kingChar) {
+                final o = _origin(c, r);
+                final Rect kingRect = Rect.fromLTWH(o.dx, o.dy, sqW, sqH);
+                final checkPaint = Paint()
+                  ..shader = RadialGradient(
+                    colors: [Colors.red.withValues(alpha: 0.8), Colors.red.withValues(alpha: 0.0)],
+                    stops: const [0.2, 0.8],
+                  ).createShader(kingRect);
+                canvas.drawRect(kingRect, checkPaint);
+              }
+              c++;
+            }
+          }
+        }
+      }
+    }
+
     // 4. File (A-H) and rank (1-8) labels in the border areas
     final double fontSize = (sqW * 0.20).clamp(10.0, 20.0);
     final labelStyle = TextStyle(
-      color: const Color(0xFF7A5C14),
+      color: Colors.white,
       fontSize: fontSize,
       fontWeight: FontWeight.w700,
     );
@@ -161,7 +203,26 @@ class ChessBoardPainter extends CustomPainter {
       }
     }
 
-    // 6. Draw animating piece
+    // 6. Draw Arrows
+    for (final arrow in arrows) {
+      if (arrow.fromSquare.length >= 2 && arrow.toSquare.length >= 2) {
+        int fc = arrow.fromSquare.codeUnitAt(0) - 97;
+        int fr = 8 - int.parse(arrow.fromSquare[1]);
+        int tc = arrow.toSquare.codeUnitAt(0) - 97;
+        int tr = 8 - int.parse(arrow.toSquare[1]);
+        
+        final fo = _origin(fc, fr);
+        final to = _origin(tc, tr);
+        
+        final start = Offset(fo.dx + sqW / 2, fo.dy + sqH / 2);
+        final end = Offset(to.dx + sqW / 2, to.dy + sqH / 2);
+        
+        // Draw the arrow
+        _drawArrow(canvas, start, end, Color(int.parse(arrow.color.replaceFirst('#', '0xFF'))), sqW);
+      }
+    }
+
+    // 7. Draw animating piece
     if (animatingPiece != null && animateFrom != null && animateTo != null && animationProgress != null) {
       int fc = animateFrom!.codeUnitAt(0) - 97;
       int fr = 8 - int.parse(animateFrom![1]);
@@ -169,10 +230,13 @@ class ChessBoardPainter extends CustomPainter {
       int tr = 8 - int.parse(animateTo![1]);
       final fo = _origin(fc, fr);
       final to = _origin(tc, tr);
+      
+      final double curvedProgress = Curves.easeInOutCubic.transform(animationProgress!);
+      
       _drawPiece(
         canvas,
         animatingPiece!,
-        Offset(fo.dx + (to.dx - fo.dx) * animationProgress!, fo.dy + (to.dy - fo.dy) * animationProgress!),
+        Offset(fo.dx + (to.dx - fo.dx) * curvedProgress, fo.dy + (to.dy - fo.dy) * curvedProgress),
         sqW, sqH,
       );
     }
@@ -189,6 +253,36 @@ class ChessBoardPainter extends CustomPainter {
     final double x = origin.dx + (sqW - tW) / 2;
     final double y = origin.dy + sqH - tH - sqH * 0.03;
     canvas.drawImageRect(image, Rect.fromLTWH(0, 0, srcW, srcH), Rect.fromLTWH(x, y, tW, tH), Paint());
+  }
+
+  void _drawArrow(Canvas canvas, Offset start, Offset end, Color color, double sqW) {
+    final paint = Paint()
+      ..color = color.withValues(alpha: 0.8)
+      ..strokeWidth = sqW * 0.15
+      ..strokeCap = StrokeCap.round;
+      
+    // Draw line
+    canvas.drawLine(start, end, paint);
+    
+    // Draw arrowhead
+    final d = end - start;
+    final angle = d.direction;
+    final arrowHeadLen = sqW * 0.4;
+    
+    final path = Path();
+    path.moveTo(end.dx, end.dy);
+    path.lineTo(
+      end.dx - arrowHeadLen * math.cos(angle - math.pi / 6),
+      end.dy - arrowHeadLen * math.sin(angle - math.pi / 6),
+    );
+    path.lineTo(
+      end.dx - arrowHeadLen * math.cos(angle + math.pi / 6),
+      end.dy - arrowHeadLen * math.sin(angle + math.pi / 6),
+    );
+    path.close();
+    
+    final headPaint = Paint()..color = color.withValues(alpha: 0.8);
+    canvas.drawPath(path, headPaint);
   }
 
   @override

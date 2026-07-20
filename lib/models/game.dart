@@ -46,6 +46,12 @@ class Ply {
   /// Manual toggle for 'important moment'
   final bool isFlagged;
 
+  /// Arrows drawn on the board during this ply
+  final List<BoardArrow> arrows;
+
+  /// Floating text labels shown during this ply
+  final List<FloatingText> floatingTexts;
+
   const Ply({
     required this.index,
     required this.moveSan,
@@ -64,6 +70,8 @@ class Ply {
     this.annotation,
     this.typingSpeedOverride,
     this.isFlagged = false,
+    this.arrows = const [],
+    this.floatingTexts = const [],
   });
 
   factory Ply.fromJson(Map<String, dynamic> json) {
@@ -85,6 +93,8 @@ class Ply {
       annotation: json['annotation'] as String?,
       typingSpeedOverride: (json['typingSpeedOverride'] as num?)?.toDouble(),
       isFlagged: json['isFlagged'] as bool? ?? false,
+      arrows: (json['arrows'] as List<dynamic>?)?.map((e) => BoardArrow.fromJson(e)).toList() ?? [],
+      floatingTexts: (json['floatingTexts'] as List<dynamic>?)?.map((e) => FloatingText.fromJson(e)).toList() ?? [],
     );
   }
 
@@ -107,6 +117,8 @@ class Ply {
       'annotation': annotation,
       'typingSpeedOverride': typingSpeedOverride,
       'isFlagged': isFlagged,
+      'arrows': arrows.map((e) => e.toJson()).toList(),
+      'floatingTexts': floatingTexts.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -128,6 +140,8 @@ class Ply {
     String? annotation,
     double? typingSpeedOverride,
     bool? isFlagged,
+    List<BoardArrow>? arrows,
+    List<FloatingText>? floatingTexts,
   }) {
     return Ply(
       index: index ?? this.index,
@@ -147,8 +161,74 @@ class Ply {
       annotation: annotation ?? this.annotation,
       typingSpeedOverride: typingSpeedOverride ?? this.typingSpeedOverride,
       isFlagged: isFlagged ?? this.isFlagged,
+      arrows: arrows ?? this.arrows,
+      floatingTexts: floatingTexts ?? this.floatingTexts,
     );
   }
+}
+
+class BoardArrow {
+  final String fromSquare;
+  final String toSquare;
+  final String color;
+  final String? text;
+
+  const BoardArrow({
+    required this.fromSquare,
+    required this.toSquare,
+    this.color = '#ff0000',
+    this.text,
+  });
+
+  factory BoardArrow.fromJson(Map<String, dynamic> json) {
+    return BoardArrow(
+      fromSquare: json['fromSquare'],
+      toSquare: json['toSquare'],
+      color: json['color'] ?? '#ff0000',
+      text: json['text'],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'fromSquare': fromSquare,
+    'toSquare': toSquare,
+    'color': color,
+    'text': text,
+  };
+}
+
+class FloatingText {
+  final String text;
+  final double x;
+  final double y;
+  final String color;
+  final double fontSize;
+
+  const FloatingText({
+    required this.text,
+    required this.x,
+    required this.y,
+    this.color = '#ffffff',
+    this.fontSize = 24.0,
+  });
+
+  factory FloatingText.fromJson(Map<String, dynamic> json) {
+    return FloatingText(
+      text: json['text'],
+      x: (json['x'] as num).toDouble(),
+      y: (json['y'] as num).toDouble(),
+      color: json['color'] ?? '#ffffff',
+      fontSize: (json['fontSize'] as num?)?.toDouble() ?? 24.0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'text': text,
+    'x': x,
+    'y': y,
+    'color': color,
+    'fontSize': fontSize,
+  };
 }
 
 /// Represents an entire chess game.
