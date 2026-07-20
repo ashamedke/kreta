@@ -1,11 +1,11 @@
-﻿
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/project.dart';
 import 'package:file_picker/file_picker.dart';
-import '../models/game.dart' show FloatingText, BoardArrow;
+import '../models/game.dart' show FloatingText, BoardArrow, Ply;
 import '../models/render_job.dart';
 import '../models/timeline.dart';
 import '../services/project_service.dart';
@@ -290,7 +290,7 @@ class _EditorScreenState extends State<EditorScreen>
             decoration: BoxDecoration(
                 color: _surface2, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
             child: Text(
-              '${_project!.game.plies.length ~/ 2} moves  Â·  ${_fmt(_totalMs)}',
+              '${_project!.game.plies.length ~/ 2} moves  \u00b7  ${_fmt(_totalMs)}',
               style: const TextStyle(fontSize: 12, color: _textSec),
             ),
           ),
@@ -363,11 +363,11 @@ class _EditorScreenState extends State<EditorScreen>
                     child: Text('${i + 1}.',
                         style: const TextStyle(fontSize: 10, color: _textSec, fontFamily: 'monospace')),
                   ),
-                  Expanded(child: _MoveChip(san: wp.san, active: wa, flagged: wp.isFlagged,
+                  Expanded(child: _MoveChip(san: wp.moveSan, active: wa, flagged: wp.isFlagged,
                       hasNote: (wp.annotation ?? '').isNotEmpty, onTap: () => _goToPly(wi + 1))),
                   const SizedBox(width: 2),
                   Expanded(child: bp != null
-                      ? _MoveChip(san: bp.san, active: ba, flagged: bp.isFlagged,
+                      ? _MoveChip(san: bp.moveSan, active: ba, flagged: bp.isFlagged,
                           hasNote: (bp.annotation ?? '').isNotEmpty, onTap: () => _goToPly(bi + 1))
                       : const SizedBox()),
                 ]),
@@ -478,7 +478,7 @@ class _EditorScreenState extends State<EditorScreen>
             decoration: BoxDecoration(
                 color: _accentDim, borderRadius: BorderRadius.circular(4),
                 border: Border.all(color: _accent.withValues(alpha: 0.5))),
-            child: Text('Move ${(_currentPlyIndex / 2).ceil()} Â· ${ply.san}',
+            child: Text('Move ${(_currentPlyIndex / 2).ceil()} \u00b7 ${ply.moveSan}',
                 style: const TextStyle(color: _accent, fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'monospace')),
           ),
           const Spacer(),
@@ -721,7 +721,7 @@ class _EditorScreenState extends State<EditorScreen>
             const SizedBox(width: 12),
             Text(
               _currentPlyIndex > 0
-                  ? 'Move ${(_currentPlyIndex / 2).ceil()}  Â·  ${plies[_currentPlyIndex - 1].san}'
+                  ? 'Move ${(_currentPlyIndex / 2).ceil()}  \u00b7  ${plies[_currentPlyIndex - 1].moveSan}'
                   : 'Start position',
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: _textPri, fontFamily: 'monospace'),
             ),
