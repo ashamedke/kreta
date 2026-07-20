@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 class AudioCue {
   final String path;
   final int timestampMs;
@@ -14,13 +16,15 @@ class FfmpegService extends ChangeNotifier {
   bool _isAvailable = false;
   bool get isAvailable => _isAvailable;
   
-  String get _ffmpegPath {
-    final exeDir = File(Platform.resolvedExecutable).parent;
-    final bundledPath = '${exeDir.path}\\ffmpeg.exe';
-    if (File(bundledPath).existsSync()) {
-      return bundledPath;
+  String _ffmpegPath = 'ffmpeg';
+  
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedPath = prefs.getString('ffmpeg_path');
+    if (savedPath != null) {
+      _ffmpegPath = savedPath;
     }
-    return 'ffmpeg';
+    await checkAvailability();
   }
   
   Future<void> checkAvailability() async {

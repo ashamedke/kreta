@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'screens/home_screen.dart';
+import 'screens/setup_screen.dart';
 import 'screens/import_screen.dart';
 import 'screens/editor_screen.dart';
 import 'screens/export_screen.dart';
@@ -12,7 +13,9 @@ import 'services/ffmpeg_service.dart';
 import 'services/youtube_service.dart';
 
 class ChessCreatorApp extends StatelessWidget {
-  const ChessCreatorApp({super.key});
+  final bool initialRouteIsSetup;
+  
+  const ChessCreatorApp({super.key, this.initialRouteIsSetup = false});
 
   @override
   Widget build(BuildContext context) {
@@ -20,12 +23,13 @@ class ChessCreatorApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => ProjectService()),
         ChangeNotifierProvider(create: (_) => RenderService()),
-        ChangeNotifierProvider(create: (_) => FfmpegService()),
+        ChangeNotifierProvider(create: (_) => FfmpegService()..init()),
         ChangeNotifierProvider(create: (_) => YouTubeService()),
       ],
       child: MaterialApp(
         title: 'ChessCreator',
         debugShowCheckedModeBanner: false,
+        home: initialRouteIsSetup ? const SetupScreen() : const HomeScreen(),
         theme: ThemeData(
           useMaterial3: true,
           scaffoldBackgroundColor: const Color(0xFF0D1117), // Background
