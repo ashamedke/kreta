@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../models/game.dart' show FloatingText, BoardArrow;
 import '../models/project.dart';
 import '../models/render_job.dart';
 import '../models/timeline.dart';

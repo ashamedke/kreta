@@ -5,8 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/project.dart';
 import 'package:file_picker/file_picker.dart';
-import '../models/project.dart';
-import '../models/render_job.dart';
+import '../models/game.dart' show FloatingText, BoardArrow;
 import '../models/timeline.dart';
 import '../services/project_service.dart';
 import '../services/timing_resolver.dart';
@@ -69,15 +68,16 @@ class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderSt
     if (_lastTick != null) {
       final delta = (elapsed - _lastTick!).inMilliseconds.toDouble() * _playbackSpeed;
       setState(() {
+        final previousTime = _realtimeMs;
         _realtimeMs += delta;
         _clock.seekToTime(_realtimeMs);
-        _syncPlyIndexWithTime();
+        _syncPlyIndexWithTime(previousTime);
       });
     }
     _lastTick = elapsed;
   }
 
-  void _syncPlyIndexWithTime() {
+  void _syncPlyIndexWithTime(double previousTime) {
     if (_project == null) return;
     double accum = 0;
     
