@@ -124,11 +124,12 @@ class FfmpegService extends ChangeNotifier {
 
     if (totalAudioInputs > 1) {
       final amixInput = audioOutputs.join('');
-      filterComplex.add('${amixInput}amix=inputs=$totalAudioInputs:normalize=0[aout]');
+      filterComplex.add('${amixInput}amix=inputs=$totalAudioInputs:normalize=0,apad[aout]');
       finalAudioOut = 'aout';
     } else if (totalAudioInputs == 1) {
-      // If only one input (either background or 1 cue), just map it
-      finalAudioOut = audioOutputs.first.replaceAll('[', '').replaceAll(']', '');
+      final input = audioOutputs.first;
+      filterComplex.add('$input apad[aout]');
+      finalAudioOut = 'aout';
     }
 
     if (filterComplex.isNotEmpty) {

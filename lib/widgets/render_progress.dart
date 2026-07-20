@@ -129,6 +129,8 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         }
       }
       
+      StringBuffer ffmpegStderr = StringBuffer();
+      
       // 2. Start FFmpeg process (skip for thumbnail)
       Process? ffmpegProcess;
       if (!widget.isThumbnail) {
@@ -144,7 +146,7 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         
         // Listen to stderr for debug/progress (optional)
         ffmpegProcess.stderr.transform(utf8.decoder).listen((data) {
-          // You could parse progress here if needed
+          ffmpegStderr.write(data);
         });
       }
       
@@ -182,7 +184,16 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
           } else {
              final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
              final bytes = byteData!.buffer.asUint8List();
-             ffmpegProcess?.stdin.add(bytes);
+             try {
+               ffmpegProcess?.stdin.add(bytes);
+             } catch (e) {
+               // Usually a SocketException when FFmpeg crashes
+               String errorMsg = ffmpegStderr.toString();
+               if (errorMsg.length > 500) {
+                 errorMsg = errorMsg.substring(errorMsg.length - 500);
+               }
+               throw Exception('FFmpeg pipe closed. FFmpeg stderr: $errorMsg');
+             }
           }
         }
         
