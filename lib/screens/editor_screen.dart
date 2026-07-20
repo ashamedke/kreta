@@ -1,12 +1,14 @@
-import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import '../models/project.dart';
+import '../models/render_job.dart';
 import '../services/project_service.dart';
 import '../services/timing_resolver.dart';
-import '../widgets/chess_board_2d.dart';
-import '../widgets/terminal_text.dart';
+import '../utils/virtual_clock.dart';
+import '../widgets/render_engine.dart';
 import '../widgets/timeline_editor.dart';
 import '../widgets/timing_panel.dart';
 
@@ -17,16 +19,27 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen> {
+class _EditorScreenState extends State<EditorScreen> with SingleTickerProviderStateMixin {
   Project? _project;
   int _currentPlyIndex = 0;
   bool _isPlaying = false;
   double _playbackSpeed = 1.0;
-  bool _flipBoard = false;
-  Timer? _playbackTimer;
+  
+  late Ticker _ticker;
+  late VirtualClock _clock;
+  double _realtimeMs = 0;
+  Duration? _lastTick;
+  
   List<ResolvedTiming> _resolvedTimings = [];
   
   final _annotationController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = VirtualClock(fps: 60);
+    _ticker = createTicker(_onTick);
+  }
 
   @override
   void didChangeDependencies() {
@@ -41,9 +54,50 @@ class _EditorScreenState extends State<EditorScreen> {
 
   @override
   void dispose() {
-    _playbackTimer?.cancel();
+    _ticker.dispose();
     _annotationController.dispose();
     super.dispose();
+  }
+
+  void _onTick(Duration elapsed) {
+    if (!_isPlaying || _project == null) return;
+    
+    if (_lastTick != null) {
+      final delta = (elapsed - _lastTick!).inMilliseconds.toDouble() * _playbackSpeed;
+      setState(() {
+        _realtimeMs += delta;
+        _clock.seekToTime(_realtimeMs);
+        _syncPlyIndexWithTime();
+      });
+    }
+    _lastTick = elapsed;
+  }
+
+  void _syncPlyIndexWithTime() {
+    if (_project == null) return;
+    double accum = 0;
+    
+    // Find which ply we are currently in
+    for (int i = 0; i < _project!.game.plies.length; i++) {
+      final timing = i < _resolvedTimings.length ? _resolvedTimings[i] : ResolvedTiming(holdDurationMs: 2000, transitionDurationMs: 500, appliedRules: []);
+      final total = timing.holdDurationMs + timing.transitionDurationMs;
+      
+      if (_realtimeMs >= accum && _realtimeMs < accum + total) {
+        if (_currentPlyIndex != i + 1) {
+          _currentPlyIndex = i + 1;
+          _loadAnnotation();
+        }
+        return;
+      }
+      accum += total;
+    }
+    
+    // If we exceed total duration, stop playback
+    if (_realtimeMs >= accum) {
+      _isPlaying = false;
+      _ticker.stop();
+      _lastTick = null;
+    }
   }
 
   void _updateResolvedTimings() {
@@ -71,32 +125,20 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _isPlaying = !_isPlaying;
       if (_isPlaying) {
-        _playNext();
+        // if we are at the end, restart
+        double totalTime = _resolvedTimings.fold(0.0, (sum, t) => sum + t.holdDurationMs + t.transitionDurationMs);
+        if (_realtimeMs >= totalTime) {
+           _realtimeMs = 0;
+           _clock.seekToTime(0);
+           _currentPlyIndex = 0;
+        }
+        
+        _lastTick = null;
+        _ticker.start();
       } else {
-        _playbackTimer?.cancel();
+        _ticker.stop();
+        _lastTick = null;
       }
-    });
-  }
-
-  void _playNext() {
-    if (!_isPlaying || _project == null || _currentPlyIndex >= _project!.game.plies.length) {
-      setState(() => _isPlaying = false);
-      return;
-    }
-
-    // Determine duration for current ply
-    double duration = 2.0; // default 2s
-    if (_currentPlyIndex < _resolvedTimings.length) {
-      duration = _resolvedTimings[_currentPlyIndex].holdDurationMs / 1000.0;
-    }
-    
-    _playbackTimer = Timer(Duration(milliseconds: (duration * 1000 / _playbackSpeed).round()), () {
-      if (!mounted) return;
-      setState(() {
-        _currentPlyIndex++;
-        _loadAnnotation();
-      });
-      _playNext();
     });
   }
 
@@ -104,6 +146,15 @@ class _EditorScreenState extends State<EditorScreen> {
     setState(() {
       _currentPlyIndex = index;
       _loadAnnotation();
+      
+      // Calculate time for this ply
+      double accum = 0;
+      for (int i = 0; i < index - 1; i++) {
+         final timing = i < _resolvedTimings.length ? _resolvedTimings[i] : ResolvedTiming(holdDurationMs: 2000, transitionDurationMs: 500, appliedRules: []);
+         accum += timing.holdDurationMs + timing.transitionDurationMs;
+      }
+      _realtimeMs = accum;
+      _clock.seekToTime(_realtimeMs);
     });
   }
 
@@ -133,11 +184,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Save',
                   onPressed: () => context.read<ProjectService>().saveProject(_project!),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.flip_camera_android),
-                  tooltip: 'Flip Board',
-                  onPressed: () => setState(() => _flipBoard = !_flipBoard),
-                ),
                 const SizedBox(width: 16),
                 ElevatedButton.icon(
                   onPressed: () => Navigator.pushNamed(context, '/export', arguments: _project),
@@ -152,45 +198,29 @@ class _EditorScreenState extends State<EditorScreen> {
           Expanded(
             child: Row(
               children: [
-                // Left Column
+                // Left Column: WYSIWYG Preview
                 Expanded(
                   flex: 6,
                   child: Padding(
                     padding: const EdgeInsets.all(24.0),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: Center(
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: Transform.rotate(
-                                angle: _flipBoard ? 3.14159 : 0,
-                                child: ChessBoard2D(fen: _project!.game.startingFen, size: 400),
-                              ),
-                            ),
+                    child: Center(
+                      child: AspectRatio(
+                        aspectRatio: 16 / 9,
+                        child: FittedBox(
+                          fit: BoxFit.contain,
+                          child: RenderEngineWidget(
+                            project: _project!,
+                            preset: RenderPreset(name: 'Preview', width: 1920, height: 1080, fps: 60, videoBitrate: 5000),
+                            clock: _clock,
+                            resolvedTimings: _resolvedTimings,
                           ),
                         ),
-                        const SizedBox(height: 24),
-                        Container(
-                          width: double.infinity,
-                          height: 80,
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF161B22),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFF30363D)),
-                          ),
-                          child: TerminalText(
-                            fullText: _annotationController.text.isEmpty ? "No annotation for this move." : _annotationController.text,
-                            revealProgress: 50,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
                 
-                // Right Column
+                // Right Column: Settings and Annotations
                 Container(
                   width: 350,
                   decoration: const BoxDecoration(
@@ -200,45 +230,6 @@ class _EditorScreenState extends State<EditorScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      // Move List Preview (Simplified)
-                      const Text('Moves', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 8),
-                      Container(
-                        height: 200,
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D1117),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: SingleChildScrollView(
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: List.generate(_project!.game.plies.length, (index) {
-                              final isCurrent = index + 1 == _currentPlyIndex;
-                              return InkWell(
-                                onTap: () => _goToPly(index + 1),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: isCurrent ? const Color(0xFF58A6FF) : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    _project!.game.plies[index].moveSan,
-                                    style: TextStyle(
-                                      color: isCurrent ? const Color(0xFF0D1117) : const Color(0xFFE6EDF3),
-                                      fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
-                      
                       // Annotation Editor
                       const Text('Annotation', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                       const SizedBox(height: 8),
@@ -276,7 +267,17 @@ class _EditorScreenState extends State<EditorScreen> {
                       const SizedBox(height: 24),
                       
                       // Timing Panel
-                      TimingPanel(timingRules: _project!.timeline.timingRules, totalDurationMs: 0, onChanged: (rules) {}),
+                      TimingPanel(
+                        timingRules: _project!.timeline.timingRules,
+                        totalDurationMs: 0,
+                        onChanged: (rules) {
+                          setState(() {
+                            _project = _project!.copyWith(timeline: _project!.timeline.copyWith(timingRules: rules));
+                            _updateResolvedTimings();
+                          });
+                          context.read<ProjectService>().saveProject(_project!);
+                        }
+                      ),
                     ],
                   ),
                 ),

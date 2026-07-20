@@ -109,4 +109,20 @@ class Project {
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+
+  Project clearBackgroundVideo() {
+    return Project(
+      id: id, name: name, game: game, timeline: timeline, layoutType: layoutType,
+      outputPath: outputPath, backgroundVideoPath: null, backgroundMusicPath: backgroundMusicPath,
+      createdAt: createdAt, updatedAt: updatedAt,
+    );
+  }
+
+  Project clearBackgroundMusic() {
+    return Project(
+      id: id, name: name, game: game, timeline: timeline, layoutType: layoutType,
+      outputPath: outputPath, backgroundVideoPath: backgroundVideoPath, backgroundMusicPath: null,
+      createdAt: createdAt, updatedAt: updatedAt,
+    );
+  }
 }

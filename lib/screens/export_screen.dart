@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -68,6 +69,35 @@ class _ExportScreenState extends State<ExportScreen> {
     }
   }
 
+  void _pickBackgroundVideo() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _project = _project!.copyWith(backgroundVideoPath: result.files.single.path);
+      });
+      context.read<ProjectService>().saveProject(_project!);
+    }
+  }
+
+  void _pickBackgroundMusic() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles(
+      type: FileType.audio,
+      allowMultiple: false,
+    );
+
+    if (result != null && result.files.single.path != null) {
+      setState(() {
+        _project = _project!.copyWith(backgroundMusicPath: result.files.single.path);
+      });
+      context.read<ProjectService>().saveProject(_project!);
+    }
+  }
+
+
   void _startRender() async {
     final preset = _presets.firstWhere((p) => p.name == _selectedPresetName);
     final ffmpegService = context.read<FfmpegService>();
@@ -75,6 +105,20 @@ class _ExportScreenState extends State<ExportScreen> {
     if (!ffmpegService.isAvailable) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('FFmpeg is not available. Please install it to render videos.'), backgroundColor: Color(0xFFF85149)),
+      );
+      return;
+    }
+
+    if (_project!.backgroundVideoPath != null && !File(_project!.backgroundVideoPath!).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Background video file not found: ${_project!.backgroundVideoPath}'), backgroundColor: Color(0xFFF85149)),
+      );
+      return;
+    }
+
+    if (_project!.backgroundMusicPath != null && !File(_project!.backgroundMusicPath!).existsSync()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Background music file not found: ${_project!.backgroundMusicPath}'), backgroundColor: Color(0xFFF85149)),
       );
       return;
     }
@@ -223,32 +267,80 @@ class _ExportScreenState extends State<ExportScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: TextEditingController(text: _project!.backgroundVideoPath ?? ''),
-                    decoration: const InputDecoration(
-                      labelText: 'Background Video Path (Optional)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.video_file),
-                      hintText: 'C:/path/to/bg.mp4',
-                    ),
-                    onChanged: (val) {
-                      _project = _project!.copyWith(backgroundVideoPath: val.isEmpty ? null : val);
-                      context.read<ProjectService>().saveProject(_project!);
-                    },
+                  const Text('Background Video', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF30363D)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _project!.backgroundVideoPath ?? 'No video selected',
+                            style: TextStyle(color: _project!.backgroundVideoPath != null ? const Color(0xFFE6EDF3) : const Color(0xFF8B949E)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (_project!.backgroundVideoPath != null)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Color(0xFFF85149)),
+                          onPressed: () {
+                            setState(() {
+                              _project = _project!.clearBackgroundVideo();
+                            });
+                            context.read<ProjectService>().saveProject(_project!);
+                          },
+                          tooltip: 'Clear',
+                        ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.video_file),
+                        label: const Text('Browse'),
+                        onPressed: _pickBackgroundVideo,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: TextEditingController(text: _project!.backgroundMusicPath ?? ''),
-                    decoration: const InputDecoration(
-                      labelText: 'Background Music Path (Optional)',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.audio_file),
-                      hintText: 'C:/path/to/music.mp3',
-                    ),
-                    onChanged: (val) {
-                      _project = _project!.copyWith(backgroundMusicPath: val.isEmpty ? null : val);
-                      context.read<ProjectService>().saveProject(_project!);
-                    },
+                  const Text('Background Music', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: const Color(0xFF30363D)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            _project!.backgroundMusicPath ?? 'No music selected',
+                            style: TextStyle(color: _project!.backgroundMusicPath != null ? const Color(0xFFE6EDF3) : const Color(0xFF8B949E)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (_project!.backgroundMusicPath != null)
+                        IconButton(
+                          icon: const Icon(Icons.clear, color: Color(0xFFF85149)),
+                          onPressed: () {
+                            setState(() {
+                              _project = _project!.clearBackgroundMusic();
+                            });
+                            context.read<ProjectService>().saveProject(_project!);
+                          },
+                          tooltip: 'Clear',
+                        ),
+                      ElevatedButton.icon(
+                        icon: const Icon(Icons.audio_file),
+                        label: const Text('Browse'),
+                        onPressed: _pickBackgroundMusic,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   const Text('Ensure you have write permissions to the output folder.', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12)),

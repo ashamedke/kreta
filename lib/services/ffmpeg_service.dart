@@ -174,8 +174,10 @@ class FfmpegService extends ChangeNotifier {
 
     final process = await Process.start(_ffmpegPath, args);
 
+    final StringBuffer stderrBuffer = StringBuffer();
     // FFmpeg writes progress to stderr
     process.stderr.transform(utf8.decoder).listen((data) {
+      stderrBuffer.write(data);
       // Parse frame=  123 from output if onProgress is provided
       if (onProgress != null) {
         final frameMatch = RegExp(r'frame=\s*(\d+)').firstMatch(data);
@@ -190,7 +192,7 @@ class FfmpegService extends ChangeNotifier {
 
     final exitCode = await process.exitCode;
     if (exitCode != 0) {
-      throw Exception('FFmpeg process failed with exit code $exitCode');
+      throw Exception('FFmpeg failed (exit code $exitCode):\n${stderrBuffer.toString()}');
     }
   }
 

@@ -230,7 +230,22 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
                   const SizedBox(height: 16),
                   const Text('Render Failed', style: TextStyle(color: AppColors.accentRed, fontSize: 18)),
                   const SizedBox(height: 8),
-                  Text(currentJob.errorMessage ?? 'Unknown error occurred.', style: const TextStyle(color: AppColors.textPrimary), textAlign: TextAlign.center),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 200, maxWidth: 500),
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0D1117),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.accentRed),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        currentJob.errorMessage ?? 'Unknown error occurred.',
+                        style: const TextStyle(color: AppColors.textPrimary, fontFamily: 'Courier', fontSize: 12),
+                        textAlign: TextAlign.left,
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 24),
                   ElevatedButton(
                     onPressed: () => Navigator.of(context).pop(),
