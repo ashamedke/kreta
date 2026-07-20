@@ -126,10 +126,10 @@ class ChessBoardPainter extends CustomPainter {
     if (lastMoveTo   != null) highlight(lastMoveTo!);
 
     // 4. File (A-H) and rank (1-8) labels in the border areas
-    final double fontSize = bL * 0.62;
+    final double fontSize = (sqW * 0.20).clamp(10.0, 20.0);
     final labelStyle = TextStyle(
       color: const Color(0xFF7A5C14),
-      fontSize: fontSize.clamp(8.0, 18.0),
+      fontSize: fontSize,
       fontWeight: FontWeight.w700,
     );
 

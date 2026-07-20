@@ -4,7 +4,6 @@ import '../models/render_job.dart';
 import '../services/timing_resolver.dart';
 import '../utils/virtual_clock.dart';
 import 'chess_board_2d.dart';
-import 'chess_board_3d.dart';
 import 'terminal_text.dart';
 
 class RenderEngineWidget extends StatelessWidget {
@@ -54,13 +53,18 @@ class RenderEngineWidget extends StatelessWidget {
         // Is it transitioning?
         if (timeInPly < timing.transitionDurationMs && timing.transitionDurationMs > 0) {
           plyAnimationProgress = timeInPly / timing.transitionDurationMs;
-          animatingPiece = ply.pieceMoved;
           animateFrom = ply.fromSquare;
           animateTo = ply.toSquare;
           
+          // Derive FEN character (upper=white, lower=black) from the pre-move position
+          final String preFen = i > 0 ? project.game.plies[i - 1].resultingFen : project.game.startingFen;
+          if (animateFrom != null) {
+            animatingPiece = _fenCharAtSquare(preFen, animateFrom!);
+          }
+          
           if (i > 0) {
             final prevPly = project.game.plies[i - 1];
-            fen = prevPly.resultingFen; // Start from previous fen
+            fen = prevPly.resultingFen;
             lastMoveFrom = prevPly.fromSquare;
             lastMoveTo = prevPly.toSquare;
           }
@@ -85,177 +89,53 @@ class RenderEngineWidget extends StatelessWidget {
     }
 
     // Wrap in a fixed size box matching the preset resolution
+    // Layout: board fills ~75% of height centred, annotation bar below it
+    final double h = preset.height.toDouble();
+    final double w = preset.width.toDouble();
+    final double boardSize = h * 0.82;
+    final double sidePad = (w - boardSize) / 2;
+
     return SizedBox(
-      width: preset.width.toDouble(),
-      height: preset.height.toDouble(),
+      width: w,
+      height: h,
       child: Container(
-        color: Colors.transparent, // Transparent background for FFmpeg composite
+        color: Colors.black,
         child: Stack(
           children: [
-            if (project.layoutType == LayoutType.splitScreen)
-              Padding(
-                padding: EdgeInsets.all(preset.width * 0.05), // 5% padding
-                child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Left side: 3D Board
-                  Expanded(
-                    child: Center(
-                      child: AspectRatio(
-                        aspectRatio: 1,
-                        child: ChessBoard3D(
-                          fen: fen,
-                          size: preset.height * 0.8,
-                          lastMoveFrom: lastMoveFrom,
-                          lastMoveTo: lastMoveTo,
-                          animationProgress: plyAnimationProgress,
-                          animatingPiece: animatingPiece,
-                          animateFrom: animateFrom,
-                          animateTo: animateTo,
-                          isFlagged: isFlagged,
-                        ),
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: preset.width * 0.05),
-                  // Right side: 2D Board + Terminal
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Center(
-                            child: AspectRatio(
-                              aspectRatio: 1,
-                              child: ChessBoard2D(
-                                fen: fen,
-                                size: preset.height * 0.5,
-                                lastMoveFrom: lastMoveFrom,
-                                lastMoveTo: lastMoveTo,
-                                animationProgress: plyAnimationProgress,
-                                animatingPiece: animatingPiece,
-                                animateFrom: animateFrom,
-                                animateTo: animateTo,
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: preset.height * 0.05),
-                        Expanded(
-                          flex: 1,
-                          child: Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.all(preset.width * 0.02),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF161B22),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF30363D), width: 4),
-                            ),
-                            child: TerminalText(
-                              fullText: annotationText.isEmpty ? "No annotation for this move." : annotationText,
-                              revealProgress: 1.0, // Fully revealed for MVP offline render logic
-                              fontSize: preset.height * 0.03,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            // Board — centred
+            Positioned(
+              left: sidePad,
+              top: (h - boardSize) / 2 - h * 0.05,
+              width: boardSize,
+              height: boardSize,
+              child: ChessBoard2D(
+                fen: fen,
+                size: boardSize,
+                lastMoveFrom: lastMoveFrom,
+                lastMoveTo: lastMoveTo,
+                animationProgress: plyAnimationProgress,
+                animatingPiece: animatingPiece,
+                animateFrom: animateFrom,
+                animateTo: animateTo,
               ),
-            )
-          else
-              // Picture-in-Picture Layout
-              Stack(
-                children: [
-                  Positioned.fill(
-                    child: Center(
-                      child: ChessBoard3D(
-                        fen: fen,
-                        size: preset.height * 0.9,
-                        lastMoveFrom: lastMoveFrom,
-                        lastMoveTo: lastMoveTo,
-                        animationProgress: plyAnimationProgress,
-                        animatingPiece: animatingPiece,
-                        animateFrom: animateFrom,
-                        animateTo: animateTo,
-                        isFlagged: isFlagged,
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: preset.height * 0.05,
-                    right: preset.width * 0.05,
-                    width: preset.width * 0.3,
-                    height: preset.height * 0.7,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF161B22),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF30363D), width: 4),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: AspectRatio(
-                                aspectRatio: 1,
-                                child: ChessBoard2D(
-                                  fen: fen,
-                                  size: preset.width * 0.25,
-                                  lastMoveFrom: lastMoveFrom,
-                                  lastMoveTo: lastMoveTo,
-                                  animationProgress: plyAnimationProgress,
-                                  animatingPiece: animatingPiece,
-                                  animateFrom: animateFrom,
-                                  animateTo: animateTo,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        SizedBox(height: preset.height * 0.02),
-                        Expanded(
-                          flex: 1,
-                          child: Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.all(preset.width * 0.01),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF161B22),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFF30363D), width: 4),
-                            ),
-                            child: TerminalText(
-                              fullText: annotationText.isEmpty ? "No annotation for this move." : annotationText,
-                              revealProgress: 1.0,
-                              fontSize: preset.height * 0.02,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            // Vignette overlay
-            Positioned.fill(
-              child: IgnorePointer(
-                child: Container(
-                  decoration: const BoxDecoration(
-                    gradient: RadialGradient(
-                      center: Alignment.center,
-                      radius: 0.8,
-                      colors: [
-                        Colors.transparent,
-                        Color(0xB3000000), // ~70% black opacity
-                      ],
-                      stops: [0.7, 1.0],
-                    ),
-                  ),
+            ),
+            // Annotation bar at bottom
+            Positioned(
+              left: sidePad,
+              right: sidePad,
+              bottom: h * 0.04,
+              height: h * 0.12,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: w * 0.02, vertical: h * 0.01),
+                decoration: BoxDecoration(
+                  color: const Color(0xDD161B22),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFF30363D), width: 2),
+                ),
+                child: TerminalText(
+                  fullText: annotationText.isEmpty ? '' : annotationText,
+                  revealProgress: 1.0,
+                  fontSize: h * 0.028,
                 ),
               ),
             ),
@@ -263,5 +143,23 @@ class RenderEngineWidget extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Extract the FEN character (uppercase=white, lowercase=black) at [square] from [fen].
+  String? _fenCharAtSquare(String fen, String square) {
+    final col = square.codeUnitAt(0) - 97; // a=0
+    final row = 8 - int.parse(square[1]);   // rank 8 = row 0
+    final fenRows = fen.split(' ')[0].split('/');
+    if (row < 0 || row >= 8) return null;
+    int c = 0;
+    for (final ch in fenRows[row].split('')) {
+      if (RegExp(r'[1-8]').hasMatch(ch)) {
+        c += int.parse(ch);
+      } else {
+        if (c == col) return ch;
+        c++;
+      }
+    }
+    return null;
   }
 }
