@@ -99,6 +99,12 @@ void _frameWriterIsolateEntry(_WriterInit init) async {
     return;
   }
 
+  if (socket == null) {
+    init.mainSendPort.send({'type': 'error', 'message': 'Writer isolate failed to initialize socket.'});
+    workerReceivePort.close();
+    return;
+  }
+
   init.mainSendPort.send({'type': 'ready'});
 
   await for (final message in workerReceivePort) {
