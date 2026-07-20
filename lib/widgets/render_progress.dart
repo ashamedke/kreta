@@ -113,10 +113,10 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
           final bool isPromotion = ply.isPromotion;
           final bool isCheck = ply.isCheck || ply.isCheckmate;
           
-          String soundFile = 'put.wav';
-          if (isCheck) soundFile = 'check.wav';
-          else if (isPromotion) soundFile = 'promotion.wav';
-          else if (isCapture) soundFile = 'capture.wav';
+          String soundFile = 'put.mp3';
+          if (isCheck) soundFile = 'check.mp3';
+          else if (isPromotion) soundFile = 'promotion.mp3';
+          else if (isCapture) soundFile = 'capture.mp3';
           
           audioCues.add(AudioCue(p.join(assetsDir, 'assets', 'audio', soundFile), hitTimeMs));
           
