@@ -72,24 +72,26 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       List<AudioCue> audioCues = [];
       if (!widget.isThumbnail) {
         double accumulatedTimeMs = 0;
-        final isRelease = const bool.fromEnvironment('dart.vm.product');
-        final baseDir = isRelease ? '${File(Platform.resolvedExecutable).parent.path}/data/flutter_assets' : Directory.current.path;
+
+        // On Windows, Flutter places assets in <exe_dir>\data\flutter_assets at runtime,
+        // both in debug (run from build\windows\runner\Debug) and release builds.
+        final String exeDir = File(Platform.resolvedExecutable).parent.path;
+        final String assetsDir = '$exeDir\\data\\flutter_assets';
         
         for (int i = 0; i < widget.project.game.plies.length; i++) {
           final ply = widget.project.game.plies[i];
           final timing = _resolvedTimings[i];
           final plyTotalTime = timing.holdDurationMs + timing.transitionDurationMs;
           
-          if (timing.transitionDurationMs > 0 || i == 0) {
-             final int hitTimeMs = (accumulatedTimeMs + timing.transitionDurationMs).toInt();
-             final bool isCapture = ply.capturedPiece != null;
-             final bool isPromotion = ply.isPromotion;
-             String soundFile = 'put.wav';
-             if (isPromotion) soundFile = 'promotion.wav';
-             else if (isCapture) soundFile = 'capture.wav';
-             
-             audioCues.add(AudioCue('$baseDir/assets/audio/$soundFile', hitTimeMs));
-          }
+          // Play sound at the moment the piece lands (end of transition)
+          final int hitTimeMs = (accumulatedTimeMs + timing.transitionDurationMs).toInt();
+          final bool isCapture = ply.capturedPiece != null;
+          final bool isPromotion = ply.isPromotion;
+          String soundFile = 'put.wav';
+          if (isPromotion) soundFile = 'promotion.wav';
+          else if (isCapture) soundFile = 'capture.wav';
+          
+          audioCues.add(AudioCue('$assetsDir\\assets\\audio\\$soundFile', hitTimeMs));
           accumulatedTimeMs += plyTotalTime;
         }
       }
