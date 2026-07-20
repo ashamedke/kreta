@@ -38,8 +38,8 @@ class ChessService {
        replayChess.load(startingFen);
     }
 
-    // chess.history returns a list of maps containing move details.
-    final history = chess.history;
+    // chess.getHistory({'verbose': true}) returns a list of maps containing move details.
+    final history = chess.getHistory({'verbose': true});
     final plies = <Ply>[];
 
     for (int i = 0; i < history.length; i++) {
@@ -47,11 +47,14 @@ class ChessService {
       
       final fromSquare = moveData['from'] as String;
       final toSquare = moveData['to'] as String;
-      final piece = moveData['piece'] as String;
+      
+      // Extract piece from the replay board before making the move
+      final piece = replayChess.get(fromSquare)?.type.name ?? 'p';
+      
       final san = moveData['san'] as String;
       final flags = moveData['flags'] as String;
       
-      final capturedPiece = moveData['captured'] as String?;
+      final capturedPiece = moveData['captured']?.toString();
       
       // Execute move on the replay board to get the resulting fen and check status
       replayChess.move(moveData);
