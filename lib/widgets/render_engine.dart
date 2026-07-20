@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/game.dart' show FloatingText, BoardArrow;
 import '../models/project.dart';
@@ -133,13 +134,14 @@ class RenderEngineWidget extends StatelessWidget {
       }
     }
 
-    // Wrap in a fixed size box matching the preset resolution.
-    // The board occupies the entire canvas edge-to-edge by default — no
-    // reserved margin, no reserved space for the analysis log. The log
-    // (when enabled) draws as an overlay on top, not as a layout sibling
-    // that shrinks the board.
+    // Canvas dimensions from the preset
     final double h = preset.height.toDouble();
     final double w = preset.width.toDouble();
+
+    // The board must remain square — use the smaller of width/height so the
+    // board fits entirely within the canvas without stretching.
+    // It is then centred via Align so there are clean letterbox/pillarbox bars.
+    final double boardSize = math.min(w, h);
 
     return SizedBox(
       width: w,
@@ -148,12 +150,12 @@ class RenderEngineWidget extends StatelessWidget {
         color: Colors.black,
         child: Stack(
           children: [
-            // Board — fills the full export resolution exactly, no dead space.
-            Positioned.fill(
+            // Board — square, centred in the canvas.
+            Align(
+              alignment: Alignment.center,
               child: ChessBoard2D(
                 fen: fen,
-                size: w,
-                height: h,
+                size: boardSize,
                 lastMoveFrom: lastMoveFrom,
                 lastMoveTo: lastMoveTo,
                 animationProgress: plyAnimationProgress,

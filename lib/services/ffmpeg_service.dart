@@ -400,15 +400,22 @@ class FfmpegService extends ChangeNotifier {
     final process = await Process.start(_ffmpegPath, args);
 
     // 3. Accept ffmpeg's connection. Guard with a timeout in case ffmpeg
-    //    fails to start (bad path, bad args) before it ever connects.
+    //    fails to start (bad path, bad args, or media probing takes long)
+    //    before it ever connects. Background media causes ffmpeg to probe
+    //    files before binding its tcp listener, so allow extra time.
+    final stderrBuffer = StringBuffer();
+    process.stderr.transform(const Utf8Decoder(allowMalformed: true)).listen(stderrBuffer.write);
+
     Socket videoSocket;
     try {
       videoSocket = await serverSocket.first.timeout(
-        const Duration(seconds: 10),
+        const Duration(seconds: 45),
         onTimeout: () {
+          process.kill();
+          final hint = stderrBuffer.toString().trim();
           throw TimeoutException(
-            'FFmpeg did not connect to the frame socket within 10s. '
-            'It may have failed to start — check ffmpeg stderr.',
+            'FFmpeg did not connect to the frame socket within 45s.\n'
+            'FFmpeg stderr:\n${hint.isEmpty ? "(no output)" : hint.length > 800 ? hint.substring(hint.length - 800) : hint}',
           );
         },
       );
