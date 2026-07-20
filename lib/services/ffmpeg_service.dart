@@ -145,7 +145,7 @@ class FfmpegService extends ChangeNotifier {
     
     if (bgVideoIndex != -1) {
       // Use filter_complex to overlay the transparent PNG sequence [0:v] on top of the background [1:v]
-      filterComplex.add('[$bgVideoIndex:v][0:v]overlay=0:0:shortest=1[vout]');
+      filterComplex.add('[$bgVideoIndex:v][0:v]overlay=0:0[vout]');
       finalVideoOut = 'vout';
     }
 
@@ -213,7 +213,6 @@ class FfmpegService extends ChangeNotifier {
         'aac',
         '-b:a',
         '192k',
-        '-shortest',
       ]);
     }
 
@@ -323,7 +322,7 @@ class FfmpegService extends ChangeNotifier {
     String finalVideoOut = '0:v';
     
     if (bgVideoIndex != -1) {
-      filterComplex.add('[$bgVideoIndex:v][0:v]overlay=0:0:shortest=1[vout]');
+      filterComplex.add('[$bgVideoIndex:v][0:v]overlay=0:0[vout]');
       finalVideoOut = 'vout';
     }
 
@@ -348,10 +347,12 @@ class FfmpegService extends ChangeNotifier {
 
     if (totalAudioInputs > 1) {
       final amixInput = audioOutputs.join('');
-      filterComplex.add('${amixInput}amix=inputs=$totalAudioInputs:normalize=0[aout]');
+      filterComplex.add('${amixInput}amix=inputs=$totalAudioInputs:normalize=0,apad[aout]');
       finalAudioOut = 'aout';
     } else if (totalAudioInputs == 1) {
-      finalAudioOut = audioOutputs.first.replaceAll('[', '').replaceAll(']', '');
+      final input = audioOutputs.first;
+      filterComplex.add('$input apad[aout]');
+      finalAudioOut = 'aout';
     }
 
     if (filterComplex.isNotEmpty) {
@@ -389,7 +390,6 @@ class FfmpegService extends ChangeNotifier {
         'aac',
         '-b:a',
         '192k',
-        '-shortest',
       ]);
     }
 
