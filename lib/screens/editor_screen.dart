@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/project.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/game.dart' show FloatingText, BoardArrow;
+import '../models/render_job.dart';
 import '../models/timeline.dart';
 import '../services/project_service.dart';
 import '../services/timing_resolver.dart';
