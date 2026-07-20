@@ -13,9 +13,15 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
-  String? _selectedPath;
+  final TextEditingController _pathController = TextEditingController();
   bool _isValidating = false;
   String? _errorMessage;
+
+  @override
+  void dispose() {
+    _pathController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickFfmpeg() async {
     final result = await FilePicker.platform.pickFiles(
@@ -25,16 +31,16 @@ class _SetupScreenState extends State<SetupScreen> {
     );
 
     if (result != null && result.files.single.path != null) {
-      final path = result.files.single.path!;
       setState(() {
-        _selectedPath = path;
+        _pathController.text = result.files.single.path!;
         _errorMessage = null;
       });
     }
   }
 
   Future<void> _validateAndSave() async {
-    if (_selectedPath == null) return;
+    final path = _pathController.text.trim();
+    if (path.isEmpty) return;
     
     setState(() {
       _isValidating = true;
@@ -42,11 +48,11 @@ class _SetupScreenState extends State<SetupScreen> {
     });
 
     try {
-      final result = await Process.run(_selectedPath!, ['-version']);
+      final result = await Process.run(path, ['-version']);
       if (result.exitCode == 0 && result.stdout.toString().toLowerCase().contains('ffmpeg')) {
         // Valid FFmpeg, save it
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('ffmpeg_path', _selectedPath!);
+        await prefs.setString('ffmpeg_path', path);
         
         if (mounted) {
           Navigator.of(context).pushReplacement(
@@ -105,36 +111,48 @@ class _SetupScreenState extends State<SetupScreen> {
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 32),
-                  InkWell(
-                    onTap: _isValidating ? null : _pickFfmpeg,
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.border),
-                        borderRadius: BorderRadius.circular(8),
-                        color: AppColors.surfaceLight,
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.folder_open, color: AppColors.textSecondary),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _selectedPath ?? 'No file selected',
-                              style: TextStyle(
-                                color: _selectedPath == null ? AppColors.textSecondary : AppColors.textPrimary,
-                                fontFamily: _selectedPath != null ? 'monospace' : null,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _pathController,
+                          enabled: !_isValidating,
+                          decoration: InputDecoration(
+                            hintText: 'e.g. C:\\ffmpeg\\bin\\ffmpeg.exe or just ffmpeg',
+                            hintStyle: TextStyle(color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                            filled: true,
+                            fillColor: AppColors.surfaceLight,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: AppColors.border),
                             ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: const BorderSide(color: AppColors.border),
+                            ),
+                            prefixIcon: const Icon(Icons.code, color: AppColors.textSecondary),
                           ),
-                          if (_selectedPath != null)
-                            const Icon(Icons.check_circle, color: AppColors.accentGreen),
-                        ],
+                          style: const TextStyle(color: AppColors.textPrimary, fontFamily: 'monospace'),
+                          onChanged: (_) {
+                            if (_errorMessage != null) {
+                              setState(() => _errorMessage = null);
+                            }
+                          },
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 16),
+                      ElevatedButton.icon(
+                        onPressed: _isValidating ? null : _pickFfmpeg,
+                        icon: const Icon(Icons.folder_open),
+                        label: const Text('Browse'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                          backgroundColor: AppColors.surfaceLight,
+                          foregroundColor: AppColors.textPrimary,
+                          side: const BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                    ],
                   ),
                   if (_errorMessage != null) ...[
                     const SizedBox(height: 16),
@@ -147,15 +165,20 @@ class _SetupScreenState extends State<SetupScreen> {
                   const SizedBox(height: 32),
                   SizedBox(
                     height: 48,
-                    child: ElevatedButton(
-                      onPressed: (_selectedPath == null || _isValidating) ? null : _validateAndSave,
-                      child: _isValidating
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.background),
-                            )
-                          : const Text('Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _pathController,
+                      builder: (context, value, child) {
+                        return ElevatedButton(
+                          onPressed: (value.text.trim().isEmpty || _isValidating) ? null : _validateAndSave,
+                          child: _isValidating
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.background),
+                                )
+                              : const Text('Continue', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        );
+                      },
                     ),
                   ),
                 ],
