@@ -8,6 +8,8 @@ import '../services/ffmpeg_service.dart';
 import '../services/project_service.dart';
 import '../services/youtube_service.dart';
 import '../widgets/render_progress.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 class ExportScreen extends StatefulWidget {
   const ExportScreen({super.key});
@@ -34,14 +36,36 @@ class _ExportScreenState extends State<ExportScreen> {
     super.didChangeDependencies();
     if (_project == null) {
       _project = ModalRoute.of(context)!.settings.arguments as Project;
-      _filenameController.text = '${_project!.name.replaceAll(' ', '_')}.mp4';
+      _initDefaultPath();
     }
+  }
+  
+  void _initDefaultPath() async {
+    final docsDir = await getApplicationDocumentsDirectory();
+    setState(() {
+       _filenameController.text = '${docsDir.path}\\${_project!.name.replaceAll(' ', '_')}.mp4';
+    });
   }
 
   @override
   void dispose() {
     _filenameController.dispose();
     super.dispose();
+  }
+  
+  void _pickOutputFile() async {
+    String? outputFile = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save Video As',
+      fileName: '${_project!.name.replaceAll(' ', '_')}.mp4',
+      type: FileType.video,
+      allowedExtensions: ['mp4'],
+    );
+
+    if (outputFile != null) {
+      setState(() {
+        _filenameController.text = outputFile;
+      });
+    }
   }
 
   void _startRender() async {
@@ -61,7 +85,7 @@ class _ExportScreenState extends State<ExportScreen> {
       status: RenderStatus.preparing,
       currentFrame: 0,
       totalFrames: 100,
-      outputPath: 'C:/Users/drnew/Desktop/${_filenameController.text}',
+      outputPath: _filenameController.text,
     );
 
     // The RenderProgressDialog will handle starting and driving the render loop.
@@ -80,7 +104,7 @@ class _ExportScreenState extends State<ExportScreen> {
       status: RenderStatus.preparing,
       currentFrame: 0,
       totalFrames: 1,
-      outputPath: 'C:/Users/drnew/Desktop/${_filenameController.text.replaceAll('.mp4', '.png')}',
+      outputPath: _filenameController.text.replaceAll('.mp4', '.png'),
     );
 
     showDialog(
@@ -153,13 +177,25 @@ class _ExportScreenState extends State<ExportScreen> {
                   const SizedBox(height: 32),
                   const Text('Output Settings', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _filenameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Filename',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.movie),
-                    ),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _filenameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Output Path',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.folder),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.folder_open),
+                        onPressed: _pickOutputFile,
+                        tooltip: 'Browse',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   const Text('Layout Style', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -215,7 +251,7 @@ class _ExportScreenState extends State<ExportScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  const Text('Files will be saved to Desktop.', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12)),
+                  const Text('Ensure you have write permissions to the output folder.', style: TextStyle(color: Color(0xFF8B949E), fontSize: 12)),
                 ],
               ),
             ),
@@ -314,7 +350,7 @@ class _ExportScreenState extends State<ExportScreen> {
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               ),
                               onPressed: () async {
-                                final videoPath = 'C:/Users/drnew/Desktop/${_filenameController.text}';
+                                final videoPath = _filenameController.text;
                                 final thumbnailPath = videoPath.replaceAll('.mp4', '.png');
                                 
                                 await youtubeService.uploadVideo(

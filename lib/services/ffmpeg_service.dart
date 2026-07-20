@@ -14,6 +14,15 @@ class FfmpegService extends ChangeNotifier {
   bool _isAvailable = false;
   bool get isAvailable => _isAvailable;
   
+  String get _ffmpegPath {
+    final exeDir = File(Platform.resolvedExecutable).parent;
+    final bundledPath = '${exeDir.path}\\ffmpeg.exe';
+    if (File(bundledPath).existsSync()) {
+      return bundledPath;
+    }
+    return 'ffmpeg';
+  }
+  
   Future<void> checkAvailability() async {
     _isAvailable = await _checkAvailability();
     notifyListeners();
@@ -22,7 +31,7 @@ class FfmpegService extends ChangeNotifier {
   /// Checks if FFmpeg is available in the system PATH.
   Future<bool> _checkAvailability() async {
     try {
-      final result = await Process.run('ffmpeg', ['-version']);
+      final result = await Process.run(_ffmpegPath, ['-version']);
       return result.exitCode == 0;
     } catch (e) {
       return false;
@@ -32,7 +41,7 @@ class FfmpegService extends ChangeNotifier {
   /// Retrieves the FFmpeg version string.
   Future<String> getVersion() async {
     try {
-      final result = await Process.run('ffmpeg', ['-version']);
+      final result = await Process.run(_ffmpegPath, ['-version']);
       if (result.exitCode == 0) {
         final output = result.stdout as String;
         // Typically the first line contains the version
@@ -163,7 +172,7 @@ class FfmpegService extends ChangeNotifier {
 
     args.add(outputPath);
 
-    final process = await Process.start('ffmpeg', args);
+    final process = await Process.start(_ffmpegPath, args);
 
     // FFmpeg writes progress to stderr
     process.stderr.transform(utf8.decoder).listen((data) {
@@ -202,7 +211,7 @@ class FfmpegService extends ChangeNotifier {
       outputPath,
     ];
 
-    final result = await Process.run('ffmpeg', args);
+    final result = await Process.run(_ffmpegPath, args);
     if (result.exitCode != 0) {
       throw Exception('Failed to extract thumbnail: ${result.stderr}');
     }
