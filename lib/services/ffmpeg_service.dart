@@ -198,6 +198,131 @@ class FfmpegService extends ChangeNotifier {
     }
   }
 
+  /// Starts an FFmpeg process reading raw RGBA frames from stdin.
+  Future<Process> startEncodeStream({
+    required int width,
+    required int height,
+    required int fps,
+    required String outputPath,
+    int videoBitrate = 8000,
+    String? audioPath,
+    String? backgroundVideoPath,
+    List<AudioCue> audioCues = const [],
+  }) async {
+    final args = [
+      '-y',
+      '-f',
+      'rawvideo',
+      '-pix_fmt',
+      'rgba',
+      '-s',
+      '${width}x$height',
+      '-r',
+      fps.toString(),
+      '-i',
+      'pipe:0',
+    ];
+
+    int inputIndex = 1;
+    int bgVideoIndex = -1;
+    int bgAudioIndex = -1;
+    
+    if (backgroundVideoPath != null) {
+      args.addAll(['-i', backgroundVideoPath]);
+      bgVideoIndex = inputIndex++;
+    }
+
+    if (audioPath != null) {
+      args.addAll(['-i', audioPath]);
+      bgAudioIndex = inputIndex++;
+    }
+
+    // Add audio cues
+    final int cueStartIndex = inputIndex;
+    for (var cue in audioCues) {
+      args.addAll(['-i', cue.path]);
+      inputIndex++;
+    }
+
+    List<String> filterComplex = [];
+    String finalVideoOut = '0:v';
+    
+    if (bgVideoIndex != -1) {
+      filterComplex.add('[$bgVideoIndex:v][0:v]overlay=0:0:shortest=1[vout]');
+      finalVideoOut = 'vout';
+    }
+
+    // Build Audio filter complex
+    String finalAudioOut = '';
+    int totalAudioInputs = 0;
+    List<String> audioOutputs = [];
+
+    if (bgAudioIndex != -1) {
+      audioOutputs.add('[$bgAudioIndex:a]');
+      totalAudioInputs++;
+    }
+
+    for (int i = 0; i < audioCues.length; i++) {
+      final cueIndex = cueStartIndex + i;
+      final delay = audioCues[i].timestampMs;
+      final outName = 'a$i';
+      filterComplex.add('[$cueIndex:a]adelay=$delay|$delay[$outName]');
+      audioOutputs.add('[$outName]');
+      totalAudioInputs++;
+    }
+
+    if (totalAudioInputs > 1) {
+      final amixInput = audioOutputs.join('');
+      filterComplex.add('${amixInput}amix=inputs=$totalAudioInputs:normalize=0[aout]');
+      finalAudioOut = 'aout';
+    } else if (totalAudioInputs == 1) {
+      finalAudioOut = audioOutputs.first.replaceAll('[', '').replaceAll(']', '');
+    }
+
+    if (filterComplex.isNotEmpty) {
+      args.addAll(['-filter_complex', filterComplex.join(';')]);
+    }
+    
+    if (finalVideoOut != '0:v') {
+      args.addAll(['-map', '[$finalVideoOut]']);
+    } else {
+      args.addAll(['-map', '0:v']);
+    }
+
+    if (finalAudioOut.isNotEmpty) {
+      if (finalAudioOut == bgAudioIndex.toString() + ':a') {
+         args.addAll(['-map', finalAudioOut]);
+      } else {
+         args.addAll(['-map', '[$finalAudioOut]']);
+      }
+    }
+
+    args.addAll([
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast', // Much faster encoding
+      '-b:v',
+      '${videoBitrate}k',
+      '-pix_fmt',
+      'yuv420p',
+    ]);
+
+    if (finalAudioOut.isNotEmpty) {
+      args.addAll([
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-shortest',
+      ]);
+    }
+
+    args.add(outputPath);
+
+    return await Process.start(_ffmpegPath, args);
+  }
+
   /// Extracts a single frame as a thumbnail.
   Future<void> extractThumbnail({
     required String videoPath,

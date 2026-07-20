@@ -102,15 +102,30 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         }
       }
       
-      // 2. Setup temp directory for frames
-      final tempDir = await getTemporaryDirectory();
-      final framesDir = Directory('${tempDir.path}/chesscreator_frames_${DateTime.now().millisecondsSinceEpoch}');
-      await framesDir.create();
+      // 2. Start FFmpeg process (skip for thumbnail)
+      Process? ffmpegProcess;
+      if (!widget.isThumbnail) {
+        ffmpegProcess = await ffmpegService.startEncodeStream(
+          width: widget.renderJob.preset.width,
+          height: widget.renderJob.preset.height,
+          fps: _clock.fps,
+          outputPath: widget.renderJob.outputPath ?? '',
+          videoBitrate: widget.renderJob.preset.videoBitrate,
+          backgroundVideoPath: widget.project.backgroundVideoPath,
+          audioCues: audioCues,
+        );
+        
+        // Listen to stderr for debug/progress (optional)
+        ffmpegProcess.stderr.transform(utf8.decoder).listen((data) {
+          // You could parse progress here if needed
+        });
+      }
       
       // 3. Render loop
       for (int f = 0; f < totalFrames; f++) {
         if (_isCancelled) {
           renderService.cancelRender();
+          ffmpegProcess?.kill();
           return;
         }
         
@@ -131,15 +146,16 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         final boundary = _renderKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
         if (boundary != null) {
           final image = await boundary.toImage(pixelRatio: 1.0);
-          final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-          final bytes = byteData!.buffer.asUint8List();
           
           if (widget.isThumbnail) {
+             final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+             final bytes = byteData!.buffer.asUint8List();
              final frameFile = File(widget.renderJob.outputPath ?? '');
              await frameFile.writeAsBytes(bytes);
           } else {
-             final frameFile = File('${framesDir.path}/frame_${f.toString().padLeft(6, '0')}.png');
-             await frameFile.writeAsBytes(bytes);
+             final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+             final bytes = byteData!.buffer.asUint8List();
+             ffmpegProcess?.stdin.add(bytes);
           }
         }
         
@@ -147,24 +163,17 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         renderService.updateProgress(f);
       }
       
-      // 4. FFmpeg Encode (skip for thumbnail)
+      // 4. Finish Encode
       if (!_isCancelled) {
-        if (!widget.isThumbnail) {
-           await ffmpegService.encodeVideo(
-             framesDir: framesDir.path,
-             outputPath: widget.renderJob.outputPath ?? '',
-             fps: _clock.fps,
-             videoBitrate: widget.renderJob.preset.videoBitrate,
-             backgroundVideoPath: widget.project.backgroundVideoPath,
-             audioPath: widget.project.backgroundMusicPath,
-             audioCues: audioCues,
-           );
+        if (!widget.isThumbnail && ffmpegProcess != null) {
+          await ffmpegProcess.stdin.close();
+          final exitCode = await ffmpegProcess.exitCode;
+          if (exitCode != 0) {
+            throw Exception('FFmpeg failed with exit code $exitCode');
+          }
         }
         renderService.completeRender(widget.renderJob.outputPath ?? '');
       }
-      
-      // Cleanup frames
-      await framesDir.delete(recursive: true);
       
     } catch (e) {
       renderService.failRender(e.toString());
