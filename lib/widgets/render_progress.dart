@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -16,6 +17,241 @@ import '../services/render_service.dart';
 import '../services/ffmpeg_service.dart';
 import '../services/timing_resolver.dart';
 import 'render_engine.dart';
+
+// ---------------------------------------------------------------------------
+// Background frame-writer isolate.
+//
+// Rationale: `boundary.toImage()` has to run on the main isolate (it reads
+// the live render tree), so we can't move frame *capture* off the UI thread
+// without a full custom-Canvas rewrite of RenderEngineWidget. What we CAN
+// move off the UI thread is everything downstream of the captured image:
+// packaging the RGBA bytes and writing them to FFmpeg's socket. That's the
+// part that used to make `stdin.add(bytes)` block the render loop while a
+// potentially-slow disk/socket write completed.
+//
+// The main isolate now:
+//   1. captures frame N (`toImage` + `toByteData`) — still on the UI thread
+//   2. hands the bytes to the writer isolate via TransferableTypedData
+//      (a zero-copy handoff — no bytes are duplicated across isolates)
+//   3. immediately proceeds to build/capture frame N+1, WITHOUT waiting for
+//      frame N's socket write to finish — as long as the writer isolate
+//      isn't more than `_maxInFlightFrames` frames behind.
+//
+// This pipelines capture and I/O instead of strictly serializing them.
+// ---------------------------------------------------------------------------
+
+/// Cap on how many captured-but-not-yet-written frames we allow to be
+/// in flight to the writer isolate at once. Without this bound, if the
+/// socket write is slower than capture, frames would queue up in the
+/// isolate's mailbox unbounded and blow up memory (each 1080p RGBA frame
+/// is ~8MB, 4K is ~32MB). This is the "buffer pooling" concern from the
+/// design doc, addressed via backpressure rather than a literal reusable
+/// buffer pool (Dart's image/byte APIs don't expose a way to render into
+/// a caller-supplied buffer).
+const int _maxInFlightFrames = 3;
+
+class _WriterInit {
+  final SendPort mainSendPort;
+  final int ffmpegPort;
+  _WriterInit(this.mainSendPort, this.ffmpegPort);
+}
+
+class _FrameMessage {
+  final int seq;
+  final TransferableTypedData data;
+  _FrameMessage(this.seq, this.data);
+}
+
+class _CloseMessage {
+  const _CloseMessage();
+}
+
+/// Entry point for the background writer isolate. Connects to FFmpeg's
+/// listening tcp socket itself (a live Socket can't be handed across an
+/// isolate boundary, so the connection has to be made from inside the
+/// isolate that will use it) and then drains frame messages onto it.
+void _frameWriterIsolateEntry(_WriterInit init) async {
+  final workerReceivePort = ReceivePort();
+  init.mainSendPort.send(workerReceivePort.sendPort);
+
+  Socket? socket;
+  try {
+    // FFmpeg needs a brief moment after process start to bind+listen on
+    // the tcp input before it will accept a connection; retry rather than
+    // failing on the first refused connection.
+    const maxAttempts = 25;
+    for (int attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        socket = await Socket.connect(
+          InternetAddress.loopbackIPv4,
+          init.ffmpegPort,
+          timeout: const Duration(milliseconds: 500),
+        );
+        break;
+      } catch (_) {
+        if (attempt == maxAttempts - 1) rethrow;
+        await Future.delayed(const Duration(milliseconds: 200));
+      }
+    }
+  } catch (e) {
+    init.mainSendPort.send({'type': 'error', 'message': 'Writer isolate could not connect to FFmpeg: $e'});
+    workerReceivePort.close();
+    return;
+  }
+
+  init.mainSendPort.send({'type': 'ready'});
+
+  await for (final message in workerReceivePort) {
+    if (message is _FrameMessage) {
+      try {
+        final bytes = message.data.materialize().asUint8List();
+        socket.add(bytes);
+        init.mainSendPort.send({'type': 'ack', 'seq': message.seq});
+      } catch (e) {
+        init.mainSendPort.send({'type': 'error', 'message': 'Frame write failed: $e'});
+        break;
+      }
+    } else if (message is _CloseMessage) {
+      try {
+        await socket.flush();
+      } catch (_) {
+        // Socket may already be broken (ffmpeg exited early) — nothing
+        // more we can do here, the exit code check on the main isolate
+        // will surface the real failure.
+      }
+      await socket.close();
+      init.mainSendPort.send({'type': 'closed'});
+      break;
+    }
+  }
+  workerReceivePort.close();
+}
+
+/// Thin controller wrapping the spawned writer isolate + its message
+/// protocol, so the widget state doesn't have to juggle ports directly.
+class _FrameWriter {
+  final Isolate isolate;
+  final ReceivePort mainReceivePort;
+  late SendPort _workerSendPort;
+  final Completer<void> _readyCompleter = Completer<void>();
+  final _AckTracker ackTracker = _AckTracker();
+  String? errorMessage;
+  bool _closed = false;
+
+  _FrameWriter._(this.isolate, this.mainReceivePort);
+
+  static Future<_FrameWriter> spawn(int ffmpegPort) async {
+    final mainReceivePort = ReceivePort();
+    final isolate = await Isolate.spawn(
+      _frameWriterIsolateEntry,
+      _WriterInit(mainReceivePort.sendPort, ffmpegPort),
+    );
+    final writer = _FrameWriter._(isolate, mainReceivePort);
+    writer._listen();
+    return writer;
+  }
+
+  void _listen() {
+    mainReceivePort.listen((message) {
+      if (message is SendPort) {
+        _workerSendPort = message;
+      } else if (message is Map) {
+        switch (message['type']) {
+          case 'ready':
+            if (!_readyCompleter.isCompleted) _readyCompleter.complete();
+            break;
+          case 'ack':
+            ackTracker.onAck(message['seq'] as int);
+            break;
+          case 'error':
+            errorMessage = message['message'] as String;
+            ackTracker.onError();
+            break;
+          case 'closed':
+            _closed = true;
+            ackTracker.onClosed();
+            break;
+        }
+      }
+    });
+  }
+
+  Future<void> get ready => _readyCompleter.future;
+
+  /// Sends a captured frame's raw RGBA bytes to the writer isolate.
+  /// Blocks (briefly) only if we're more than [_maxInFlightFrames] ahead
+  /// of the writer's acknowledged progress — this is the backpressure
+  /// valve that keeps memory bounded.
+  Future<void> sendFrame(int seq, TransferableTypedData data) async {
+    await ackTracker.waitForCapacity(seq, _maxInFlightFrames);
+    if (errorMessage != null) {
+      throw Exception(errorMessage);
+    }
+    _workerSendPort.send(_FrameMessage(seq, data));
+  }
+
+  Future<void> closeAndWait() async {
+    if (errorMessage != null) return; // already broken, nothing to flush
+    _workerSendPort.send(const _CloseMessage());
+    await ackTracker.waitForClosed();
+  }
+
+  void dispose() {
+    mainReceivePort.close();
+    isolate.kill(priority: Isolate.immediate);
+  }
+}
+
+/// Tracks which frame sequence numbers have been acknowledged as written,
+/// and lets the producer wait until it's allowed to send more.
+class _AckTracker {
+  int _lastAcked = -1;
+  bool _closed = false;
+  bool _errored = false;
+  final List<Completer<void>> _waiters = [];
+
+  void onAck(int seq) {
+    if (seq > _lastAcked) _lastAcked = seq;
+    _drain();
+  }
+
+  void onError() {
+    _errored = true;
+    _drain();
+  }
+
+  void onClosed() {
+    _closed = true;
+    _drain();
+  }
+
+  /// Wakes every current waiter so it re-checks its own condition. Each
+  /// waiter that's still blocked re-adds itself with a fresh Completer on
+  /// its next loop iteration (see waitForCapacity), so it's safe to just
+  /// complete-and-clear here rather than track who's "really" satisfied.
+  void _drain() {
+    for (final c in _waiters) {
+      if (!c.isCompleted) c.complete();
+    }
+    _waiters.clear();
+  }
+
+  Future<void> waitForCapacity(int seq, int maxInFlight) async {
+    if (_errored) return;
+    while (seq - _lastAcked > maxInFlight && !_errored) {
+      final c = Completer<void>();
+      _waiters.add(c);
+      await c.future;
+    }
+  }
+
+  Future<void> waitForClosed() async {
+    if (_closed || _errored) return;
+    final c = Completer<void>();
+    _waiters.add(c);
+    await c.future;
+  }
+}
 
 class RenderProgressDialog extends StatefulWidget {
   final Project project;
@@ -77,7 +313,11 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
   Future<void> _startRenderLoop() async {
     final renderService = context.read<RenderService>();
     final ffmpegService = context.read<FfmpegService>();
+    StringBuffer ffmpegStderr = StringBuffer();
     
+    FfmpegEncodeSession? ffmpegSession;
+    _FrameWriter? frameWriter;
+
     try {
       // 1. Calculate total frames
       int totalDurationMs = 0;
@@ -129,12 +369,9 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         }
       }
       
-      StringBuffer ffmpegStderr = StringBuffer();
-      
-      // 2. Start FFmpeg process (skip for thumbnail)
-      Process? ffmpegProcess;
+      // 2. Start FFmpeg process + its socket-backed frame writer (skip for thumbnail)
       if (!widget.isThumbnail) {
-        ffmpegProcess = await ffmpegService.startEncodeStream(
+        ffmpegSession = await ffmpegService.startEncodeStream(
           width: widget.renderJob.preset.width,
           height: widget.renderJob.preset.height,
           fps: _clock.fps,
@@ -145,16 +382,26 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
         );
         
         // Listen to stderr for debug/progress (optional)
-        ffmpegProcess.stderr.transform(utf8.decoder).listen((data) {
+        ffmpegSession.process.stderr.transform(utf8.decoder).listen((data) {
           ffmpegStderr.write(data);
         });
+
+        frameWriter = await _FrameWriter.spawn(ffmpegSession.listenPort);
+        await frameWriter.ready.timeout(
+          const Duration(seconds: 12),
+          onTimeout: () => throw Exception(
+            'Timed out waiting for the frame-writer isolate to connect to FFmpeg.',
+          ),
+        );
       }
       
-      // 3. Render loop
+      // 3. Render loop — capture stays on the UI thread; writing pipelines
+      //    off it via frameWriter, bounded by _maxInFlightFrames.
       for (int f = 0; f < totalFrames; f++) {
         if (_isCancelled) {
           renderService.cancelRender();
-          ffmpegProcess?.kill();
+          ffmpegSession?.process.kill();
+          frameWriter?.dispose();
           return;
         }
         
@@ -184,15 +431,20 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
           } else {
              final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
              final bytes = byteData!.buffer.asUint8List();
+             // Zero-copy handoff to the writer isolate. This is the part
+             // that used to be `ffmpegProcess.stdin.add(bytes)` running
+             // inline on the UI thread; it now happens off-isolate, and
+             // we don't block waiting for the write to complete — only
+             // for the backpressure window in sendFrame().
+             final transferable = TransferableTypedData.fromList([bytes]);
              try {
-               ffmpegProcess?.stdin.add(bytes);
+               await frameWriter!.sendFrame(f, transferable);
              } catch (e) {
-               // Usually a SocketException when FFmpeg crashes
                String errorMsg = ffmpegStderr.toString();
                if (errorMsg.length > 500) {
                  errorMsg = errorMsg.substring(errorMsg.length - 500);
                }
-               throw Exception('FFmpeg pipe closed. FFmpeg stderr: $errorMsg');
+               throw Exception('FFmpeg frame writer failed: $e. FFmpeg stderr: $errorMsg');
              }
           }
         }
@@ -203,9 +455,12 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       
       // 4. Finish Encode
       if (!_isCancelled) {
-        if (!widget.isThumbnail && ffmpegProcess != null) {
-          await ffmpegProcess.stdin.close();
-          final exitCode = await ffmpegProcess.exitCode;
+        if (!widget.isThumbnail && ffmpegSession != null && frameWriter != null) {
+          await frameWriter.closeAndWait();
+          if (frameWriter.errorMessage != null) {
+            throw Exception(frameWriter.errorMessage);
+          }
+          final exitCode = await ffmpegSession.process.exitCode;
           if (exitCode != 0) {
             throw Exception('FFmpeg failed with exit code $exitCode');
           }
@@ -214,8 +469,17 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       }
       
     } catch (e) {
-      renderService.failRender(e.toString());
+      String errMsg = e.toString();
+      if (ffmpegStderr.isNotEmpty) {
+        String stderrStr = ffmpegStderr.toString();
+        if (stderrStr.length > 500) {
+           stderrStr = stderrStr.substring(stderrStr.length - 500);
+        }
+        errMsg += '\nFFmpeg Log:\n$stderrStr';
+      }
+      renderService.failRender(errMsg);
     } finally {
+      frameWriter?.dispose();
       if (mounted) {
         setState(() {}); // trigger rebuild on finish
       }
