@@ -1,0 +1,44 @@
+name: chesscreator
+description: "Chess Video Generator — turn chess games into narrated MP4 videos"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  chess: ^0.8.1
+  http: ^1.6.0
+  flutter_svg: ^2.0.17
+  provider: ^6.1.5
+  file_picker: ^9.2.2
+  path_provider: ^2.1.6
+  uuid: ^4.0.0
+  google_fonts: ^6.2.1
+  desktop_drop: ^0.5.0
+  flutter_cube: ^0.1.1
+  googleapis: ^16.0.0
+  google_sign_in: ^7.2.0
+  extension_google_sign_in_as_googleapis_auth: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/pieces/
+    - assets/models/
+
+  fonts:
+    - family: JetBrainsMono
+      fonts:
+        - asset: assets/fonts/JetBrainsMono-Regular.ttf
+        - asset: assets/fonts/JetBrainsMono-Bold.ttf
+          weight: 700
