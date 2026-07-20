@@ -35,6 +35,8 @@ flutter:
   assets:
     - assets/pieces/
     - assets/models/
+    - assets/board/
+    - assets/audio/
 
   fonts:
     - family: JetBrainsMono

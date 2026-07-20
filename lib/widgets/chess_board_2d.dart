@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
+import '../services/asset_cache_service.dart';
 
 class ChessBoard2D extends StatelessWidget {
   final String fen;
@@ -72,15 +73,22 @@ class ChessBoardPainter extends CustomPainter {
     final double squareSize = size.width / 8;
 
     // Draw board
-    for (int row = 0; row < 8; row++) {
-      for (int col = 0; col < 8; col++) {
-        final bool isLight = (row + col) % 2 == 0;
-        final Paint paint = Paint()
-          ..color = isLight ? AppColors.boardLight : AppColors.boardDark;
-        canvas.drawRect(
-          Rect.fromLTWH(col * squareSize, row * squareSize, squareSize, squareSize),
-          paint,
-        );
+    final boardImage = AssetCacheService().boardImage;
+    if (boardImage != null) {
+      final src = Rect.fromLTWH(0, 0, boardImage.width.toDouble(), boardImage.height.toDouble());
+      final dst = Rect.fromLTWH(0, 0, size.width, size.height);
+      canvas.drawImageRect(boardImage, src, dst, Paint());
+    } else {
+      for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+          final bool isLight = (row + col) % 2 == 0;
+          final Paint paint = Paint()
+            ..color = isLight ? AppColors.boardLight : AppColors.boardDark;
+          canvas.drawRect(
+            Rect.fromLTWH(col * squareSize, row * squareSize, squareSize, squareSize),
+            paint,
+          );
+        }
       }
     }
 
@@ -158,42 +166,21 @@ class ChessBoardPainter extends CustomPainter {
   }
 
   void _drawPiece(Canvas canvas, String pieceChar, double col, double row, double squareSize) {
-    final symbol = PieceSymbols.getSymbol(pieceChar);
-    final isWhite = PieceSymbols.isWhite(pieceChar);
+    final image = AssetCacheService().pieceImages[pieceChar];
+    if (image == null) return;
 
-    final textStyle = TextStyle(
-      fontSize: squareSize * 0.8,
-      color: isWhite ? const Color(0xFFFFFFFF) : const Color(0xFF1A1A2E),
-      shadows: isWhite
-          ? [const Shadow(color: Colors.black54, offset: Offset(1, 1), blurRadius: 2)]
-          : null,
-    );
-
-    final textPainter = TextPainter(
-      text: TextSpan(text: symbol, style: textStyle),
-      textDirection: TextDirection.ltr,
-    )..layout();
-
-    final xOffset = col * squareSize + (squareSize - textPainter.width) / 2;
-    final yOffset = row * squareSize + (squareSize - textPainter.height) / 2;
+    // The piece images often have transparent padding. 
+    // We scale them slightly larger than the square and offset them slightly up to create a 3D depth effect.
+    final double pieceScale = 1.2;
+    final double scaledSize = squareSize * pieceScale;
     
-    if (!isWhite) {
-      // Outline for black pieces
-      final outlineStyle = textStyle.copyWith(
-        foreground: Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1
-          ..color = Colors.white54,
-        shadows: [],
-      );
-      final outlinePainter = TextPainter(
-        text: TextSpan(text: symbol, style: outlineStyle),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      outlinePainter.paint(canvas, Offset(xOffset, yOffset));
-    }
+    final xOffset = col * squareSize - (scaledSize - squareSize) / 2;
+    final yOffset = row * squareSize - (scaledSize - squareSize); // Shift up
 
-    textPainter.paint(canvas, Offset(xOffset, yOffset));
+    final src = Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble());
+    final dst = Rect.fromLTWH(xOffset, yOffset, scaledSize, scaledSize);
+    
+    canvas.drawImageRect(image, src, dst, Paint());
   }
 
   Offset _squareToPos(String square) {

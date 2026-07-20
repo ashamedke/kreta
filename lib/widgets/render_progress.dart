@@ -68,6 +68,32 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       // Update job with total frames
       renderService.startRender(widget.project, widget.renderJob.preset, widget.renderJob.outputPath ?? '', totalFrames: totalFrames);
       
+      // Calculate Audio Cues
+      List<AudioCue> audioCues = [];
+      if (!widget.isThumbnail) {
+        double accumulatedTimeMs = 0;
+        final isRelease = const bool.fromEnvironment('dart.vm.product');
+        final baseDir = isRelease ? '${File(Platform.resolvedExecutable).parent.path}/data/flutter_assets' : Directory.current.path;
+        
+        for (int i = 0; i < widget.project.game.plies.length; i++) {
+          final ply = widget.project.game.plies[i];
+          final timing = _resolvedTimings[i];
+          final plyTotalTime = timing.holdDurationMs + timing.transitionDurationMs;
+          
+          if (timing.transitionDurationMs > 0 || i == 0) {
+             final int hitTimeMs = (accumulatedTimeMs + timing.transitionDurationMs).toInt();
+             final bool isCapture = ply.capturedPiece != null;
+             final bool isPromotion = ply.isPromotion;
+             String soundFile = 'put.wav';
+             if (isPromotion) soundFile = 'promotion.wav';
+             else if (isCapture) soundFile = 'capture.wav';
+             
+             audioCues.add(AudioCue('$baseDir/assets/audio/$soundFile', hitTimeMs));
+          }
+          accumulatedTimeMs += plyTotalTime;
+        }
+      }
+      
       // 2. Setup temp directory for frames
       final tempDir = await getTemporaryDirectory();
       final framesDir = Directory('${tempDir.path}/chesscreator_frames_${DateTime.now().millisecondsSinceEpoch}');
@@ -121,6 +147,7 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
              videoBitrate: widget.renderJob.preset.videoBitrate,
              backgroundVideoPath: widget.project.backgroundVideoPath,
              audioPath: widget.project.backgroundMusicPath,
+             audioCues: audioCues,
            );
         }
         renderService.completeRender(widget.renderJob.outputPath ?? '');
