@@ -174,12 +174,13 @@ class _ExportScreenState extends State<ExportScreen> {
         title: const Text('Export Video'),
         backgroundColor: const Color(0xFF161B22),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Left: Presets and Output
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Left: Presets and Output
             Expanded(
               flex: 3,
               child: Column(
@@ -478,6 +479,7 @@ class _ExportScreenState extends State<ExportScreen> {
             ),
           ],
         ),
+      ),
       ),
     );
   }
