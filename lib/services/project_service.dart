@@ -13,7 +13,7 @@ class ProjectService extends ChangeNotifier {
 
   /// Gets the directory where projects are stored.
   Future<String> get _projectsDir async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = await getApplicationSupportDirectory();
     final path = '${directory.path}/chesscreator_projects';
     final dir = Directory(path);
     if (!await dir.exists()) {

@@ -71,7 +71,17 @@ class _ImportScreenState extends State<ImportScreen> {
     });
     try {
       final client = LichessClient(ChessService());
-      final game = await client.fetchGameById(id.trim());
+      Game game;
+      final query = id.trim();
+      if (query.length == 8) {
+        try {
+          game = await client.fetchGameById(query);
+        } catch (e) {
+          game = await client.fetchLatestGameForUser(query);
+        }
+      } else {
+        game = await client.fetchLatestGameForUser(query);
+      }
       if (mounted) setState(() => _parsedGame = game);
     } catch (e) {
       if (mounted) setState(() => _errorMessage = e.toString());
@@ -189,9 +199,9 @@ class _ImportScreenState extends State<ImportScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTextField(_lichessIdController, 'Lichess Game ID (e.g. QxZ5i58D)', onChanged: (val) {
+                        _buildTextField(_lichessIdController, 'Lichess Game ID or Username', onChanged: (val) {
                           if (val.length == 8) {
-                            _fetchLichess(val);
+                            // Don't auto-fetch anymore since it might be a username
                           }
                         }),
                         const SizedBox(height: 16),

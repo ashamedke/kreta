@@ -31,4 +31,33 @@ class LichessClient {
       throw Exception('Failed to fetch game from Lichess. Status: ${response.statusCode}');
     }
   }
+
+  /// Fetches the latest game for a given Lichess username.
+  Future<Game> fetchLatestGameForUser(String username) async {
+    final url = Uri.parse('https://lichess.org/api/games/user/$username?max=1&tags=true&clocks=false&evals=false&opening=false');
+    final response = await http.get(url, headers: {
+      'Accept': 'application/x-chess-pgn',
+    });
+
+    if (response.statusCode == 200) {
+      final pgn = response.body.trim();
+      if (pgn.isEmpty) {
+        throw Exception('No games found for user $username');
+      }
+      
+      final game = _chessService.parseFromPgn(pgn);
+      
+      // Update source
+      return Game(
+        id: game.id,
+        source: GameSource.lichess,
+        sourceRef: username,
+        startingFen: game.startingFen,
+        pgnTags: game.pgnTags,
+        plies: game.plies,
+      );
+    } else {
+      throw Exception('Failed to fetch game from Lichess. Status: ${response.statusCode}');
+    }
+  }
 }
