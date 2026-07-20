@@ -5,6 +5,7 @@ import '../services/project_service.dart';
 import '../services/ffmpeg_service.dart';
 import '../models/project.dart';
 import '../widgets/chess_board_2d.dart';
+import '../utils/constants.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -14,12 +15,19 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  bool _isLoadingProjects = true;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ProjectService>().loadProjects();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final projectService = context.read<ProjectService>();
       context.read<FfmpegService>().checkAvailability();
+      try {
+        await projectService.loadProjects();
+      } finally {
+        if (mounted) setState(() => _isLoadingProjects = false);
+      }
     });
   }
 
@@ -38,7 +46,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 ShaderMask(
                   shaderCallback: (bounds) => const LinearGradient(
-                    colors: [Color(0xFF58A6FF), Color(0xFF7C3AED)],
+                    colors: [AppColors.accentBlue, AppColors.accentPurple],
                   ).createShader(bounds),
                   child: const Text(
                     'ChessCreator',
@@ -54,7 +62,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Create premium chess videos with ease.',
                   style: TextStyle(
                     fontSize: 18,
-                    color: Color(0xFF8B949E), // TextSecondary
+                    color: AppColors.textSecondary,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -73,54 +81,80 @@ class _HomeScreenState extends State<HomeScreen> {
 
           // Project Grid
           Expanded(
-            child: projectService.projects.isEmpty
+            child: _isLoadingProjects
                 ? const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.dashboard_customize_outlined, size: 64, color: Color(0xFF30363D)),
-                        SizedBox(height: 16),
-                        Text(
-                          'No projects yet. Create one to get started.',
-                          style: TextStyle(color: Color(0xFF8B949E)),
-                        ),
-                      ],
+                    child: SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 3,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.accentBlue),
+                      ),
                     ),
                   )
-                : GridView.builder(
-                    padding: const EdgeInsets.all(32),
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 300,
-                      childAspectRatio: 0.8,
-                      crossAxisSpacing: 24,
-                      mainAxisSpacing: 24,
-                    ),
-                    itemCount: projectService.projects.length,
-                    itemBuilder: (context, index) {
-                      final project = projectService.projects[index];
-                      return _ProjectCard(project: project);
-                    },
-                  ),
+                : projectService.projects.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.dashboard_customize_outlined, size: 64, color: AppColors.border),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'No projects yet.',
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 16, fontWeight: FontWeight.w600),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'Import a game to create your first chess video.',
+                              style: TextStyle(color: AppColors.textSecondary),
+                            ),
+                            const SizedBox(height: 20),
+                            OutlinedButton.icon(
+                              onPressed: () => Navigator.pushNamed(context, '/import'),
+                              icon: const Icon(Icons.add, size: 18),
+                              label: const Text('New Project'),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.accentBlue,
+                                side: const BorderSide(color: AppColors.accentBlue),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : GridView.builder(
+                        padding: const EdgeInsets.all(32),
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 300,
+                          childAspectRatio: 0.8,
+                          crossAxisSpacing: 24,
+                          mainAxisSpacing: 24,
+                        ),
+                        itemCount: projectService.projects.length,
+                        itemBuilder: (context, index) {
+                          final project = projectService.projects[index];
+                          return _ProjectCard(project: project);
+                        },
+                      ),
           ),
 
           // Bottom Bar
           Container(
             padding: const EdgeInsets.all(16),
             decoration: const BoxDecoration(
-              color: Color(0xFF161B22),
-              border: Border(top: BorderSide(color: Color(0xFF30363D))),
+              color: AppColors.surface,
+              border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Row(
               children: [
                 Icon(
                   ffmpegService.isAvailable ? Icons.check_circle : Icons.error,
-                  color: ffmpegService.isAvailable ? const Color(0xFF06D6A0) : const Color(0xFFF85149),
+                  color: ffmpegService.isAvailable ? AppColors.accentGreen : AppColors.accentRed,
                   size: 16,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   ffmpegService.isAvailable ? 'FFmpeg ready' : 'FFmpeg not found',
-                  style: const TextStyle(color: Color(0xFF8B949E), fontSize: 12),
+                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                 ),
               ],
             ),
@@ -131,98 +165,132 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _ProjectCard extends StatelessWidget {
+class _ProjectCard extends StatefulWidget {
   final Project project;
 
   const _ProjectCard({required this.project});
 
   @override
-  Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onHover: (hovering) {
-          // Hover logic placeholder
-        },
-        onTap: () {
-          Navigator.pushNamed(context, '/editor', arguments: project);
-        },
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 3,
-              child: IgnorePointer(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: ChessBoard2D(fen: project.game.startingFen, size: 200),
-                ),
-              ),
-            ),
-            const Divider(height: 1, color: Color(0xFF30363D)),
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      project.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '${project.game.plies.length ~/ 2} moves',
-                      style: const TextStyle(
-                        color: Color(0xFF8B949E),
-                        fontSize: 12,
-                      ),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, size: 20),
-                          color: const Color(0xFFF85149),
-                          onPressed: () async {
-                            final confirm = await showDialog<bool>(
-                              context: context,
-                              builder: (context) => AlertDialog(
-                                backgroundColor: const Color(0xFF161B22),
-                                title: const Text('Delete Project?'),
-                                content: Text('Are you sure you want to delete ${project.name}?'),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context, false),
-                                    child: const Text('Cancel', style: TextStyle(color: Color(0xFFE6EDF3))),
-                                  ),
-                                  ElevatedButton(
-                                    style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF85149)),
-                                    onPressed: () => Navigator.pop(context, true),
-                                    child: const Text('Delete'),
-                                  ),
-                                ],
-                              ),
-                            );
+  State<_ProjectCard> createState() => _ProjectCardState();
+}
 
-                            if (confirm == true && context.mounted) {
-                              context.read<ProjectService>().deleteProject(project.id);
-                            }
-                          },
+class _ProjectCardState extends State<_ProjectCard> {
+  bool _isHovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final project = widget.project;
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovering = true),
+      onExit: (_) => setState(() => _isHovering = false),
+      cursor: SystemMouseCursors.click,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        transform: Matrix4.identity()..scale(_isHovering ? 1.02 : 1.0),
+        transformAlignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: _isHovering ? AppColors.accentBlue : AppColors.border,
+            width: _isHovering ? 1.5 : 1.0,
+          ),
+          boxShadow: _isHovering
+              ? [
+                  BoxShadow(
+                    color: AppColors.accentBlue.withValues(alpha: 0.25),
+                    blurRadius: 16,
+                    spreadRadius: 1,
+                  ),
+                ]
+              : const [],
+        ),
+        child: Card(
+          margin: EdgeInsets.zero,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              Navigator.pushNamed(context, '/editor', arguments: project);
+            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: IgnorePointer(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: ChessBoard2D(fen: project.game.startingFen, size: 200),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, color: AppColors.border),
+                Expanded(
+                  flex: 2,
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          project.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          '${project.game.plies.length ~/ 2} moves',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline, size: 20),
+                              color: AppColors.accentRed,
+                              onPressed: () async {
+                                final confirm = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    backgroundColor: AppColors.surface,
+                                    title: const Text('Delete Project?'),
+                                    content: Text('Are you sure you want to delete ${project.name}?'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Cancel', style: TextStyle(color: AppColors.textPrimary)),
+                                      ),
+                                      ElevatedButton(
+                                        style: ElevatedButton.styleFrom(backgroundColor: AppColors.accentRed),
+                                        onPressed: () => Navigator.pop(context, true),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                if (confirm == true && context.mounted) {
+                                  context.read<ProjectService>().deleteProject(project.id);
+                                }
+                              },
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show listEquals;
 import '../utils/constants.dart';
 import '../services/asset_cache_service.dart';
 import '../models/game.dart' show BoardArrow;
@@ -291,5 +292,10 @@ class ChessBoardPainter extends CustomPainter {
       old.lastMoveFrom != lastMoveFrom ||
       old.lastMoveTo != lastMoveTo ||
       old.isFlipped != isFlipped ||
-      old.animationProgress != animationProgress;
+      old.animationProgress != animationProgress ||
+      old.animatingPiece != animatingPiece ||
+      old.animateFrom != animateFrom ||
+      old.animateTo != animateTo ||
+      old.isCheck != isCheck ||
+      !listEquals(old.arrows, arrows);
 }

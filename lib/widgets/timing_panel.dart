@@ -21,10 +21,30 @@ class TimingPanel extends StatefulWidget {
 class _TimingPanelState extends State<TimingPanel> {
   late TimingRules _currentRules;
 
+  // One controller per rule id, created lazily and reused across rebuilds so
+  // typing in the hold-duration field doesn't get a fresh (and therefore
+  // unfocused / cursor-reset) controller on every setState.
+  final Map<String, TextEditingController> _holdControllers = {};
+
   @override
   void initState() {
     super.initState();
     _currentRules = widget.timingRules;
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _holdControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  TextEditingController _holdControllerFor(TimingRule rule) {
+    return _holdControllers.putIfAbsent(
+      rule.id,
+      () => TextEditingController(text: rule.holdDurationMs.toString()),
+    );
   }
 
   void _updateRules(TimingRules newRules) {
@@ -32,6 +52,14 @@ class _TimingPanelState extends State<TimingPanel> {
       _currentRules = newRules;
     });
     widget.onChanged(newRules);
+  }
+
+  /// Generates a unique id for a new rule. Uses a microsecond timestamp plus
+  /// the current rule count as a tiebreaker so two rules added in the same
+  /// microsecond (unlikely, but possible on fast hardware/hot reload) still
+  /// don't collide.
+  String _generateRuleId() {
+    return '${DateTime.now().microsecondsSinceEpoch}_${_currentRules.rules.length}';
   }
 
   @override
@@ -67,7 +95,15 @@ class _TimingPanelState extends State<TimingPanel> {
               ElevatedButton.icon(
                 onPressed: () {
                   final newRules = _currentRules.copyWith(
-                    rules: [..._currentRules.rules, TimingRule(id: '1', predicate: TimingRulePredicate.isCapture, effect: TimingRuleEffect.add, holdDurationMs: 1000)],
+                    rules: [
+                      ..._currentRules.rules,
+                      TimingRule(
+                        id: _generateRuleId(),
+                        predicate: TimingRulePredicate.isCapture,
+                        effect: TimingRuleEffect.add,
+                        holdDurationMs: 1000,
+                      ),
+                    ],
                   );
                   _updateRules(newRules);
                 },
@@ -204,7 +240,7 @@ class _TimingPanelState extends State<TimingPanel> {
                   suffixStyle: TextStyle(color: AppColors.textSecondary),
                   border: OutlineInputBorder(),
                 ),
-                controller: TextEditingController(text: rule.holdDurationMs.toString()),
+                controller: _holdControllerFor(rule),
                 keyboardType: TextInputType.number,
                 onSubmitted: (val) {
                   final ms = int.tryParse(val) ?? rule.holdDurationMs;
@@ -218,6 +254,7 @@ class _TimingPanelState extends State<TimingPanel> {
               icon: const Icon(Icons.delete, color: AppColors.accentRed),
               onPressed: () {
                 final newRules = List<TimingRule>.from(_currentRules.rules)..removeAt(index);
+                _holdControllers.remove(rule.id)?.dispose();
                 _updateRules(_currentRules.copyWith(rules: newRules));
               },
             ),

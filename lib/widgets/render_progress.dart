@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:provider/provider.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 import '../utils/constants.dart';
 import '../utils/virtual_clock.dart';
@@ -52,6 +53,27 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
     });
   }
   
+  /// Resolves the on-disk location of `flutter_assets` relative to the
+  /// compiled executable. This layout differs by desktop platform:
+  ///  - Windows:  <exe_dir>\data\flutter_assets
+  ///  - Linux:    <exe_dir>/data/flutter_assets
+  ///  - macOS:    <App>.app/Contents/Frameworks/App.framework/Resources/flutter_assets
+  String _resolveFlutterAssetsDir() {
+    final String exeDir = File(Platform.resolvedExecutable).parent.path;
+    if (Platform.isMacOS) {
+      return p.normalize(p.join(
+        exeDir,
+        '..',
+        'Frameworks',
+        'App.framework',
+        'Resources',
+        'flutter_assets',
+      ));
+    }
+    // Windows and Linux share the same relative layout.
+    return p.join(exeDir, 'data', 'flutter_assets');
+  }
+
   Future<void> _startRenderLoop() async {
     final renderService = context.read<RenderService>();
     final ffmpegService = context.read<FfmpegService>();
@@ -74,10 +96,11 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
       if (!widget.isThumbnail) {
         double accumulatedTimeMs = 0;
 
-        // On Windows, Flutter places assets in <exe_dir>\data\flutter_assets at runtime,
-        // both in debug (run from build\windows\runner\Debug) and release builds.
-        final String exeDir = File(Platform.resolvedExecutable).parent.path;
-        final String assetsDir = '$exeDir\\data\\flutter_assets';
+        // Flutter places the flutter_assets directory in a different spot per
+        // platform relative to the compiled executable. Resolve it correctly
+        // instead of assuming Windows, and join paths with the platform's
+        // own separator so this works on Windows, macOS, and Linux desktop.
+        final String assetsDir = _resolveFlutterAssetsDir();
         
         for (int i = 0; i < widget.project.game.plies.length; i++) {
           final ply = widget.project.game.plies[i];
@@ -88,15 +111,18 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
           final int hitTimeMs = (accumulatedTimeMs + timing.transitionDurationMs).toInt();
           final bool isCapture = ply.capturedPiece != null;
           final bool isPromotion = ply.isPromotion;
+          final bool isCheck = ply.isCheck || ply.isCheckmate;
+          
           String soundFile = 'put.wav';
-          if (isPromotion) soundFile = 'promotion.wav';
+          if (isCheck) soundFile = 'check.wav';
+          else if (isPromotion) soundFile = 'promotion.wav';
           else if (isCapture) soundFile = 'capture.wav';
           
-          audioCues.add(AudioCue('$assetsDir\\assets\\audio\\$soundFile', hitTimeMs));
+          audioCues.add(AudioCue(p.join(assetsDir, 'assets', 'audio', soundFile), hitTimeMs));
           
           final textLen = (ply.annotation ?? '').length;
           if (textLen > 0) {
-             audioCues.add(AudioCue('$assetsDir\\assets\\audio\\typing.wav', hitTimeMs));
+             audioCues.add(AudioCue(p.join(assetsDir, 'assets', 'audio', 'typing.wav'), hitTimeMs));
           }
           
           accumulatedTimeMs += plyTotalTime;

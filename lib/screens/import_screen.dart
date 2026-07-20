@@ -7,6 +7,7 @@ import '../models/game.dart';
 import '../widgets/chess_board_2d.dart';
 import '../services/lichess_client.dart';
 import '../services/chesscom_client.dart';
+import '../utils/constants.dart';
 
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
@@ -24,6 +25,7 @@ class _ImportScreenState extends State<ImportScreen> {
   
   Game? _parsedGame;
   bool _isLoading = false;
+  bool _isCreating = false;
   String? _errorMessage;
 
   @override
@@ -111,7 +113,7 @@ class _ImportScreenState extends State<ImportScreen> {
   void _createProject() async {
     if (_parsedGame == null) return;
     
-    setState(() => _isLoading = true);
+    setState(() => _isCreating = true);
 
     final name = _projectNameController.text.trim().isEmpty 
         ? 'Untitled Project' 
@@ -119,7 +121,7 @@ class _ImportScreenState extends State<ImportScreen> {
         
     final project = await context.read<ProjectService>().createProject(name, _parsedGame!);
     if (mounted) {
-      setState(() => _isLoading = false);
+      setState(() => _isCreating = false);
       Navigator.pushReplacementNamed(context, '/editor', arguments: project);
     }
   }
@@ -132,21 +134,37 @@ class _ImportScreenState extends State<ImportScreen> {
       style: const TextStyle(fontFamily: 'monospace'),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Color(0xFF8B949E)),
+        labelStyle: const TextStyle(color: AppColors.textSecondary),
         filled: true,
-        fillColor: const Color(0xFF161B22),
+        fillColor: AppColors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF30363D)),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF30363D)),
+          borderSide: const BorderSide(color: AppColors.border),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(8),
-          borderSide: const BorderSide(color: Color(0xFF58A6FF)),
+          borderSide: const BorderSide(color: AppColors.accentBlue),
         ),
+      ),
+    );
+  }
+
+  Widget _buildFetchButton({required String label, required VoidCallback? onPressed}) {
+    return SizedBox(
+      height: 44,
+      child: ElevatedButton(
+        onPressed: _isLoading ? null : onPressed,
+        child: _isLoading
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+              )
+            : Text(label),
       ),
     );
   }
@@ -158,11 +176,11 @@ class _ImportScreenState extends State<ImportScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Import Game'),
-          backgroundColor: const Color(0xFF161B22),
+          backgroundColor: AppColors.surface,
           bottom: const TabBar(
-            indicatorColor: Color(0xFF58A6FF),
-            labelColor: Color(0xFF58A6FF),
-            unselectedLabelColor: Color(0xFF8B949E),
+            indicatorColor: AppColors.accentBlue,
+            labelColor: AppColors.accentBlue,
+            unselectedLabelColor: AppColors.textSecondary,
             tabs: [
               Tab(text: 'FEN'),
               Tab(text: 'PGN'),
@@ -199,28 +217,32 @@ class _ImportScreenState extends State<ImportScreen> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTextField(_lichessIdController, 'Lichess Game ID or Username', onChanged: (val) {
-                          if (val.length == 8) {
-                            // Don't auto-fetch anymore since it might be a username
-                          }
-                        }),
+                        _buildTextField(
+                          _lichessIdController,
+                          'Lichess Game ID or Username',
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Paste an 8-character game ID for an exact game, or a username for their latest game.',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
                         const SizedBox(height: 16),
-                        ElevatedButton(
+                        _buildFetchButton(
+                          label: 'Fetch Game',
                           onPressed: () => _fetchLichess(_lichessIdController.text),
-                          child: const Text('Fetch Game'),
-                        )
+                        ),
                       ],
                     ),
                     // Chess.com
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTextField(_chesscomUsernameController, 'Chess.com Username', onChanged: null),
+                        _buildTextField(_chesscomUsernameController, 'Chess.com Username'),
                         const SizedBox(height: 16),
-                        ElevatedButton(
+                        _buildFetchButton(
+                          label: 'Fetch Latest Game',
                           onPressed: () => _fetchChesscom(_chesscomUsernameController.text),
-                          child: const Text('Fetch Latest Game'),
-                        )
+                        ),
                       ],
                     ),
                   ],
@@ -239,17 +261,17 @@ class _ImportScreenState extends State<ImportScreen> {
                         const Text('Preview', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 16),
                         if (_errorMessage != null)
-                          Text(_errorMessage!, style: const TextStyle(color: Color(0xFFF85149)))
+                          Text(_errorMessage!, style: const TextStyle(color: AppColors.accentRed))
                         else if (_parsedGame != null) ...[
                           Expanded(
                             child: ChessBoard2D(fen: _parsedGame!.startingFen, size: 200),
                           ),
                           const SizedBox(height: 16),
-                          Text('${_parsedGame!.plies.length ~/ 2} moves parsed', style: const TextStyle(color: Color(0xFF8B949E))),
+                          Text('${_parsedGame!.plies.length ~/ 2} moves parsed', style: const TextStyle(color: AppColors.textSecondary)),
                         ] else
                           const Expanded(
                             child: Center(
-                              child: Text('Enter a valid game to preview', style: TextStyle(color: Color(0xFF8B949E))),
+                              child: Text('Enter a valid game to preview', style: TextStyle(color: AppColors.textSecondary)),
                             ),
                           ),
                         const SizedBox(height: 24),
@@ -265,8 +287,8 @@ class _ImportScreenState extends State<ImportScreen> {
                           width: double.infinity,
                           height: 48,
                           child: ElevatedButton(
-                            onPressed: _parsedGame == null || _isLoading ? null : _createProject,
-                            child: _isLoading 
+                            onPressed: _parsedGame == null || _isCreating ? null : _createProject,
+                            child: _isCreating
                                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
                                 : const Text('Create Project', style: TextStyle(fontWeight: FontWeight.bold)),
                           ),

@@ -28,6 +28,49 @@ class TimelineEditor extends StatefulWidget {
 class _TimelineEditorState extends State<TimelineEditor> {
   final ScrollController _scrollController = ScrollController();
 
+  static const double _itemHMargin = 4.0; // 2px each side
+
+  @override
+  void didUpdateWidget(TimelineEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentPlyIndex != oldWidget.currentPlyIndex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToPly(widget.currentPlyIndex));
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  double _widthForPly(int index) {
+    final timing = widget.resolvedTimings.length > index ? widget.resolvedTimings[index] : null;
+    final duration = timing != null ? timing.holdDurationMs + timing.transitionDurationMs : 2000;
+    return (duration / 100).clamp(40.0, 300.0) + _itemHMargin;
+  }
+
+  void _scrollToPly(int index) {
+    if (!_scrollController.hasClients || index < 0) return;
+
+    double offsetBeforeItem = 0;
+    for (int i = 0; i < index; i++) {
+      offsetBeforeItem += _widthForPly(i);
+    }
+    final itemWidth = _widthForPly(index);
+    final viewportWidth = _scrollController.position.viewportDimension;
+
+    // Center the selected item in the viewport when possible.
+    double target = offsetBeforeItem - (viewportWidth - itemWidth) / 2;
+    target = target.clamp(0.0, _scrollController.position.maxScrollExtent);
+
+    _scrollController.animateTo(
+      target,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     double totalDurationMs = 0;
@@ -64,10 +107,7 @@ class _TimelineEditorState extends State<TimelineEditor> {
               itemCount: widget.project.game.plies.length,
               itemBuilder: (context, index) {
                 final ply = widget.project.game.plies[index];
-                final timing = widget.resolvedTimings.length > index ? widget.resolvedTimings[index] : null;
-                final duration = timing != null ? timing.holdDurationMs + timing.transitionDurationMs : 2000;
-                
-                final width = (duration / 100).clamp(40.0, 300.0);
+                final width = _widthForPly(index) - _itemHMargin;
                 final isSelected = index == widget.currentPlyIndex;
 
                 Color blockColor = AppColors.surface;
@@ -81,13 +121,23 @@ class _TimelineEditorState extends State<TimelineEditor> {
 
                 return GestureDetector(
                   onTap: () => widget.onPlySelected(index),
-                  child: Container(
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    curve: Curves.easeOut,
                     width: width,
                     margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
                     decoration: BoxDecoration(
                       color: blockColor,
                       borderRadius: BorderRadius.circular(4),
                       border: isSelected ? Border.all(color: AppColors.accentBlue, width: 2) : Border.all(color: AppColors.border),
+                      boxShadow: isSelected
+                          ? [
+                              BoxShadow(
+                                color: AppColors.accentBlue.withValues(alpha: 0.35),
+                                blurRadius: 8,
+                              ),
+                            ]
+                          : const [],
                     ),
                     child: Center(
                       child: Text(

@@ -24,6 +24,7 @@ dependencies:
   google_sign_in: ^7.2.0
   extension_google_sign_in_as_googleapis_auth: ^3.0.0
   audioplayers: ^6.8.1
+  path: ^1.9.1
 
 dev_dependencies:
   flutter_test:
