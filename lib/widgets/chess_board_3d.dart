@@ -79,6 +79,7 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
     final board = Object(
       fileName: boardFileName,
       isAsset: boardIsAsset,
+      normalized: false,
       position: Vector3(0, 0, 0),
       scale: Vector3.all(widget.localModelsScale),
     );
@@ -198,6 +199,7 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
     final piece = Object(
       fileName: fileName,
       isAsset: isAsset,
+      normalized: false,
       position: Vector3(x, 0.0, z),
       scale: Vector3.all(widget.localModelsScale),
     );
@@ -242,6 +244,7 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
       final arrowObj = Object(
         fileName: 'assets/models/arrow.obj',
         isAsset: true,
+        normalized: false,
         position: Vector3(mx, 0.02, mz), // Slightly above the board
         scale: Vector3(widget.localModelsScale, widget.localModelsScale, length * widget.localModelsScale), // stretch it to length
         rotation: Vector3(0, angle * 180 / math.pi, 0),
