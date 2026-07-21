@@ -29,10 +29,11 @@ class ChessBoard3D extends StatefulWidget {
   final String? animateTo;
   final bool isFlagged;
   final String? localModelsPath;
+  final double localModelsScale;
   final List<BoardArrow> arrows;
 
   const ChessBoard3D({
-    Key? key,
+    super.key,
     required this.fen,
     this.lastMoveFrom,
     this.lastMoveTo,
@@ -45,8 +46,9 @@ class ChessBoard3D extends StatefulWidget {
     this.animateTo,
     this.isFlagged = false,
     this.localModelsPath,
+    this.localModelsScale = 1.0,
     this.arrows = const [],
-  }) : super(key: key);
+  });
 
   @override
   State<ChessBoard3D> createState() => _ChessBoard3DState();
@@ -74,7 +76,12 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
       boardFileName = '${widget.localModelsPath}/board.obj';
       boardIsAsset = false;
     }
-    final board = Object(fileName: boardFileName, isAsset: boardIsAsset, position: Vector3(0, 0, 0));
+    final board = Object(
+      fileName: boardFileName,
+      isAsset: boardIsAsset,
+      position: Vector3(0, 0, 0),
+      scale: Vector3.all(widget.localModelsScale),
+    );
     scene.world.add(board);
     
     _updatePieces();
@@ -192,45 +199,56 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
       fileName: fileName,
       isAsset: isAsset,
       position: Vector3(x, 0.0, z),
-      scale: Vector3(1.0, 1.0, 1.0),
+      scale: Vector3.all(widget.localModelsScale),
     );
+    
+    // Rotate black pieces 180 degrees if needed (optional based on your models)
+    if (!isWhite) {
+      piece.rotation.setValues(0, 180, 0);
+    }
     
     _scene!.world.add(piece);
     _pieceObjects.add(piece);
   }
 
   void _updateArrows() {
-    // If arrows changed, update them. We will add arrow objects to _pieceObjects so they get cleared.
+    if (_scene == null) return;
+    
+    // Add arrows
     for (final arrow in widget.arrows) {
-      if (arrow.fromSquare.length >= 2 && arrow.toSquare.length >= 2) {
-        final fromCoord = _squareToColRow(arrow.fromSquare);
-        final toCoord = _squareToColRow(arrow.toSquare);
-        
-        double x1 = fromCoord[0] - 3.5;
-        double z1 = fromCoord[1] - 3.5;
-        double x2 = toCoord[0] - 3.5;
-        double z2 = toCoord[1] - 3.5;
-        
-        if (widget.isFlipped) {
-          x1 = -x1; z1 = -z1;
-          x2 = -x2; z2 = -z2;
-        }
-        
-        final dx = x2 - x1;
-        final dz = z2 - z1;
-        final length = math.sqrt(dx*dx + dz*dz);
-        final angle = math.atan2(-dx, -dz); // The arrow.obj points along -Z, so we rotate it.
-        
-        final arrowObj = Object(
-          fileName: 'assets/models/arrow.obj',
-          isAsset: true,
-          position: Vector3(x1, 0.0, z1),
-          rotation: Vector3(0.0, angle * 180 / math.pi, 0.0),
-          scale: Vector3(1.0, 1.0, length), // Scale Z to match length
-        );
-        _scene!.world.add(arrowObj);
-        _pieceObjects.add(arrowObj);
+      final fromCoord = _squareToColRow(arrow.fromSquare);
+      final toCoord = _squareToColRow(arrow.toSquare);
+      
+      double x1 = (fromCoord[0] - 3.5);
+      double z1 = (fromCoord[1] - 3.5);
+      double x2 = (toCoord[0] - 3.5);
+      double z2 = (toCoord[1] - 3.5);
+      
+      if (widget.isFlipped) {
+        x1 = -x1; z1 = -z1;
+        x2 = -x2; z2 = -z2;
       }
+      
+      double dx = x2 - x1;
+      double dz = z2 - z1;
+      
+      double angle = math.atan2(dx, dz);
+      double length = math.sqrt(dx*dx + dz*dz);
+      
+      // We will place the arrow in the middle
+      double mx = (x1 + x2) / 2;
+      double mz = (z1 + z2) / 2;
+      
+      final arrowObj = Object(
+        fileName: 'assets/models/arrow.obj',
+        isAsset: true,
+        position: Vector3(mx, 0.02, mz), // Slightly above the board
+        scale: Vector3(widget.localModelsScale, widget.localModelsScale, length * widget.localModelsScale), // stretch it to length
+        rotation: Vector3(0, angle * 180 / math.pi, 0),
+      );
+      
+      _scene!.world.add(arrowObj);
+      _pieceObjects.add(arrowObj);
     }
   }
 

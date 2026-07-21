@@ -226,6 +226,7 @@ class _EditorScreenState extends State<EditorScreen> {
 
   void _showSettingsDialog() {
     final textController = TextEditingController(text: _project!.localModelsPath ?? '');
+    final scaleController = TextEditingController(text: _project!.localModelsScale.toString());
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(

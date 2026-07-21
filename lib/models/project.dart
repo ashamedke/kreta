@@ -16,6 +16,7 @@ class Project {
   final String? backgroundVideoPath;
   final String? backgroundMusicPath;
   final String? localModelsPath;
+  final double localModelsScale;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -29,6 +30,7 @@ class Project {
     this.backgroundVideoPath,
     this.backgroundMusicPath,
     this.localModelsPath,
+    this.localModelsScale = 1.0,
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : id = id ?? const Uuid().v4(),
@@ -63,6 +65,7 @@ class Project {
       backgroundVideoPath: json['backgroundVideoPath'] as String?,
       backgroundMusicPath: json['backgroundMusicPath'] as String?,
       localModelsPath: json['localModelsPath'] as String?,
+      localModelsScale: (json['localModelsScale'] as num?)?.toDouble() ?? 1.0,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,
@@ -83,13 +86,13 @@ class Project {
       'backgroundVideoPath': backgroundVideoPath,
       'backgroundMusicPath': backgroundMusicPath,
       'localModelsPath': localModelsPath,
+      'localModelsScale': localModelsScale,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
   }
 
   Project copyWith({
-    String? id,
     String? name,
     Game? game,
     Timeline? timeline,
@@ -98,11 +101,10 @@ class Project {
     String? backgroundVideoPath,
     String? backgroundMusicPath,
     String? localModelsPath,
-    DateTime? createdAt,
-    DateTime? updatedAt,
+    double? localModelsScale,
   }) {
     return Project(
-      id: id ?? this.id,
+      id: id,
       name: name ?? this.name,
       game: game ?? this.game,
       timeline: timeline ?? this.timeline,
@@ -111,8 +113,9 @@ class Project {
       backgroundVideoPath: backgroundVideoPath ?? this.backgroundVideoPath,
       backgroundMusicPath: backgroundMusicPath ?? this.backgroundMusicPath,
       localModelsPath: localModelsPath ?? this.localModelsPath,
-      createdAt: createdAt ?? this.createdAt,
-      updatedAt: updatedAt ?? this.updatedAt,
+      localModelsScale: localModelsScale ?? this.localModelsScale,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
     );
   }
 
