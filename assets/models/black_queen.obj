@@ -1,5 +1,5 @@
 mtllib black.mtl
-usemtl black_mat
+usemtl black
 # https://github.com/mikedh/trimesh
 v -0.00005351 2.34600131 -0.31454686
 v 0.03334124 2.34249502 -0.31445293

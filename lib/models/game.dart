@@ -46,11 +46,6 @@ class Ply {
   /// Manual toggle for 'important moment'
   final bool isFlagged;
 
-  /// Arrows drawn on the board during this ply
-  final List<BoardArrow> arrows;
-
-  /// Floating text labels shown during this ply
-  final List<FloatingText> floatingTexts;
 
   const Ply({
     required this.index,

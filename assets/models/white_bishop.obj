@@ -1,5 +1,5 @@
 mtllib white.mtl
-usemtl white_mat
+usemtl white
 # https://github.com/mikedh/trimesh
 v -0.08302316 2.40338263 -0.28990904
 v -0.05754448 2.41809278 -0.28990893

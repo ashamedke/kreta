@@ -20,7 +20,7 @@ import '../widgets/timeline_editor.dart';
 import '../widgets/timing_panel.dart';
 import '../models/selection_model.dart';
 import '../widgets/editor_gizmo_layer.dart';
-
+import '../services/playback_engine.dart';
 // â”€â”€ colour tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _bg        = Color(0xFF0D1117);
 const _surface   = Color(0xFF161B22);
@@ -111,43 +111,7 @@ class _EditorScreenState extends State<EditorScreen> {
     }
   }
 
-  void _togglePlay() {
-    setState(() {
-      _isPlaying = !_isPlaying;
-      if (_isPlaying) {
-        // if we are at the end, restart
-        double totalTime = _resolvedTimings.fold(0.0, (sum, t) => sum + t.holdDurationMs + t.transitionDurationMs);
-        if (_realtimeMs >= totalTime) {
-           _realtimeMs = 0;
-           _clock.seekToTime(0);
-           _currentPlyIndex = 0;
-        }
-        
-        _lastTick = null;
-        _ticker.start();
-      } else {
-        _ticker.stop();
-        _lastTick = null;
-        PreviewSoundService().stopTyping();
-      }
-    });
-  }
 
-  void _goToPly(int index) {
-    setState(() {
-      _currentPlyIndex = index;
-      _loadAnnotation();
-      
-      // Calculate time for this ply
-      double accum = 0;
-      for (int i = 0; i < index - 1; i++) {
-         final timing = i < _resolvedTimings.length ? _resolvedTimings[i] : ResolvedTiming(holdDurationMs: 2000, transitionDurationMs: 500, appliedRules: []);
-         accum += timing.holdDurationMs + timing.transitionDurationMs;
-      }
-      _realtimeMs = accum;
-      _clock.seekToTime(_realtimeMs);
-    });
-  }
 
   // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -305,7 +269,7 @@ class _EditorScreenState extends State<EditorScreen> {
             decoration: BoxDecoration(
                 color: _surface2, borderRadius: BorderRadius.circular(20), border: Border.all(color: _border)),
             child: Text(
-              '${_project!.game.plies.length ~/ 2} moves  \u00b7  ${_fmt(_totalMs)}',
+              '${_project!.game.plies.length ~/ 2} moves  \u00b7  ${_fmt(_engine!.totalMs)}',
               style: const TextStyle(fontSize: 12, color: _textSec),
             ),
           ),

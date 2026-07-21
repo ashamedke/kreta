@@ -37,7 +37,7 @@ class Project {
   factory Project.create(String name, Game game) {
     final timeline = Timeline(
       gameId: game.id,
-      layers: const [],
+      tracks: const [],
       timingRules: const TimingRules(rules: []),
     );
     return Project(

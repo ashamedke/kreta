@@ -363,7 +363,7 @@ class _ExportScreenState extends State<ExportScreen> {
                       const Divider(height: 32, color: Color(0xFF30363D)),
                       _SummaryRow(label: 'Name', value: _project!.name),
                       _SummaryRow(label: 'Moves', value: '${_project!.game.plies.length ~/ 2}'),
-                      _SummaryRow(label: 'Layers', value: '${_project!.timeline.layers.length}'),
+                      _SummaryRow(label: 'Tracks', value: '${_project!.timeline.tracks.length}'),
                       
                       const SizedBox(height: 24),
                       if (!hasFfmpeg)
