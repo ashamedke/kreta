@@ -269,6 +269,24 @@ class _EditorScreenState extends State<EditorScreen> {
             ),
             const SizedBox(height: 4),
             const Text('Absolute path to a folder containing board.obj and piece .obj files.', style: TextStyle(color: _textSec, fontSize: 11)),
+            const SizedBox(height: 16),
+            const Text('Model Scale', style: TextStyle(color: _textSec, fontSize: 13)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: scaleController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              style: const TextStyle(color: _textPri),
+              decoration: const InputDecoration(
+                hintText: 'e.g. 0.01 or 1.0',
+                hintStyle: TextStyle(color: _textSec),
+                filled: true,
+                fillColor: _surface2,
+                border: OutlineInputBorder(borderSide: BorderSide.none),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text('Scale factor to apply to local models. Useful if they appear giant or tiny.', style: TextStyle(color: _textSec, fontSize: 11)),
           ],
         ),
         actions: [
@@ -279,8 +297,9 @@ class _EditorScreenState extends State<EditorScreen> {
           ElevatedButton(
             onPressed: () {
               final newPath = textController.text.trim().isEmpty ? null : textController.text.trim();
+              final newScale = double.tryParse(scaleController.text.trim()) ?? 1.0;
               setState(() {
-                _project = _project!.copyWith(localModelsPath: newPath);
+                _project = _project!.copyWith(localModelsPath: newPath, localModelsScale: newScale);
                 if (newPath == null) {
                   _project = _project!.clearLocalModelsPath();
                 }
