@@ -1,5 +1,6 @@
 import 'package:chesscreator/models/game.dart';
 import 'package:chesscreator/models/timing.dart';
+import 'package:chesscreator/models/timeline.dart';
 
 /// Represents the resolved timing duration for a single ply.
 class ResolvedTiming {
@@ -79,5 +80,86 @@ class TimingResolver {
       default:
         return false;
     }
+  }
+
+  /// Synchronizes the Game's plies with the Timeline's tracks.
+  Timeline syncTimelineWithGame(Timeline timeline, Game game) {
+    int introMs = timeline.introMs ?? 0;
+    int currentMs = introMs;
+    
+    List<ChessMoveItem> newItems = [];
+    final resolvedTimings = resolveAllTimings(game.plies, timeline.timingRules);
+    
+    for (int i = 0; i < game.plies.length; i++) {
+      final ply = game.plies[i];
+      final timing = resolvedTimings[i];
+      
+      final duration = timing.holdDurationMs + timing.transitionDurationMs;
+      
+      // Preserve existing ID if present
+      String? existingId;
+      try {
+        final videoTrack = timeline.tracks.firstWhere((t) => t.type == TrackType.video);
+        final existingItem = videoTrack.items.whereType<ChessMoveItem>().firstWhere((item) => item.plyIndex == ply.index);
+        existingId = existingItem.id;
+      } catch (e) {
+        // Not found, will generate new UUID
+      }
+
+      newItems.add(ChessMoveItem(
+        id: existingId,
+        startTimeMs: currentMs,
+        endTimeMs: currentMs + duration,
+        plyIndex: ply.index,
+      ));
+      
+      currentMs += duration;
+    }
+    
+    Track videoTrack;
+    try {
+      videoTrack = timeline.tracks.firstWhere((t) => t.type == TrackType.video);
+    } catch (_) {
+      videoTrack = Track(name: 'Video', type: TrackType.video);
+    }
+
+    final newVideoTrack = videoTrack.copyWith(items: newItems);
+    
+    final newTracks = timeline.tracks.where((t) => t.type != TrackType.video).toList();
+    newTracks.insert(0, newVideoTrack);
+    
+    // Ripple edit AnnotationItems based on sourcePlyIndex
+    final List<Track> updatedTracks = [];
+    for (final track in newTracks) {
+      if (track.type == TrackType.annotation) {
+        final updatedItems = track.items.map((item) {
+          if (item is AnnotationItem && item.sourcePlyIndex != null) {
+            try {
+              final sourceMove = newItems.firstWhere((move) => move.plyIndex == item.sourcePlyIndex);
+              final duration = item.endTimeMs != null ? (item.endTimeMs! - item.startTimeMs) : null;
+              if (item is ArrowItem) {
+                return item.copyWith(
+                  startTimeMs: sourceMove.startTimeMs, 
+                  endTimeMs: duration != null ? sourceMove.startTimeMs + duration : null
+                );
+              } else if (item is FloatingTextItem) {
+                return item.copyWith(
+                  startTimeMs: sourceMove.startTimeMs, 
+                  endTimeMs: duration != null ? sourceMove.startTimeMs + duration : null
+                );
+              }
+            } catch (_) {
+              // source move not found, keep as is
+            }
+          }
+          return item;
+        }).toList();
+        updatedTracks.add(track.copyWith(items: updatedItems));
+      } else {
+        updatedTracks.add(track);
+      }
+    }
+    
+    return timeline.copyWith(tracks: updatedTracks);
   }
 }

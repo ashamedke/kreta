@@ -1,0 +1,5 @@
+newmtl light_square
+Kd 0.94 0.85 0.71
+
+newmtl dark_square
+Kd 0.71 0.53 0.39

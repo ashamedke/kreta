@@ -5,8 +5,11 @@ import 'package:provider/provider.dart';
 
 import '../models/project.dart';
 import 'package:file_picker/file_picker.dart';
-import '../models/game.dart' show FloatingText, BoardArrow, Ply;
+import '../models/game.dart' show Ply;
 import '../models/render_job.dart';
+import '../models/keyframe.dart';
+import '../models/animatable_property.dart';
+import '../models/timing.dart';
 import '../models/timeline.dart';
 import '../services/project_service.dart';
 import '../services/timing_resolver.dart';
@@ -15,6 +18,8 @@ import '../utils/virtual_clock.dart';
 import '../widgets/render_engine.dart';
 import '../widgets/timeline_editor.dart';
 import '../widgets/timing_panel.dart';
+import '../models/selection_model.dart';
+import '../widgets/editor_gizmo_layer.dart';
 
 // â”€â”€ colour tokens â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const _bg        = Color(0xFF0D1117);
@@ -33,30 +38,24 @@ class EditorScreen extends StatefulWidget {
   State<EditorScreen> createState() => _EditorScreenState();
 }
 
-class _EditorScreenState extends State<EditorScreen>
-    with SingleTickerProviderStateMixin {
+class _EditorScreenState extends State<EditorScreen> {
   Project? _project;
   int _currentPlyIndex = 0;
-  bool _isPlaying = false;
-  double _playbackSpeed = 1.0;
-
-  late Ticker _ticker;
+  
+  PlaybackEngine? _engine;
   late VirtualClock _clock;
-  double _realtimeMs = 0;
-  Duration? _lastTick;
 
-  List<ResolvedTiming> _resolvedTimings = [];
   final _annotationController = TextEditingController();
 
   // 0=Notes 1=Overlays 2=Timing
   int _rightTab = 0;
   final _moveScroll = ScrollController();
+  final SelectionModel _selectionModel = SelectionModel();
 
   @override
   void initState() {
     super.initState();
     _clock = VirtualClock(fps: 60);
-    _ticker = createTicker(_onTick);
   }
 
   @override
@@ -65,88 +64,35 @@ class _EditorScreenState extends State<EditorScreen>
     if (_project == null) {
       final proj = ModalRoute.of(context)!.settings.arguments as Project;
       _project = proj;
-      _updateResolvedTimings();
+      _engine = PlaybackEngine(project: _project!);
+      _engine!.addListener(_onEngineTick);
       _loadAnnotation();
     }
   }
 
   @override
   void dispose() {
-    _ticker.dispose();
+    _engine?.removeListener(_onEngineTick);
+    _engine?.dispose();
     _annotationController.dispose();
     _moveScroll.dispose();
+    _selectionModel.dispose();
     super.dispose();
   }
 
-  void _onTick(Duration elapsed) {
-    if (!_isPlaying || _project == null) return;
-    
-    if (_lastTick != null) {
-      final delta = (elapsed - _lastTick!).inMilliseconds.toDouble() * _playbackSpeed;
-      setState(() {
-        final previousTime = _realtimeMs;
-        _realtimeMs += delta;
-        _clock.seekToTime(_realtimeMs);
-        _syncPlyIndexWithTime(previousTime);
-      });
-    }
-    _lastTick = elapsed;
-  }
-
-  void _syncPlyIndexWithTime(double previousTime) {
-    if (_project == null) return;
-    double accum = 0;
-    
-    // Find which ply we are currently in
-    for (int i = 0; i < _project!.game.plies.length; i++) {
-      final timing = i < _resolvedTimings.length ? _resolvedTimings[i] : ResolvedTiming(holdDurationMs: 2000, transitionDurationMs: 500, appliedRules: []);
-      final total = timing.holdDurationMs + timing.transitionDurationMs;
-      
-      final transitionEnd = accum + timing.transitionDurationMs;
-      if (previousTime < transitionEnd && _realtimeMs >= transitionEnd && _isPlaying) {
-         final ply = _project!.game.plies[i];
-         PreviewSoundService().playMoveSound(
-            isCapture: ply.capturedPiece != null,
-            isPromotion: ply.isPromotion,
-            isCheck: ply.isCheck,
-         );
+  void _onEngineTick() {
+    setState(() {
+      _clock.seekToTime(_engine!.currentRealtimeMs);
+      if (_currentPlyIndex != _engine!.currentPlyIndex) {
+        _currentPlyIndex = _engine!.currentPlyIndex;
+        _loadAnnotation();
       }
-      
-      if (_realtimeMs >= accum && _realtimeMs < accum + total) {
-        if (_currentPlyIndex != i + 1) {
-          _currentPlyIndex = i + 1;
-          _loadAnnotation();
-        }
-        final ply = _project!.game.plies[i];
-        final textLen = (ply.annotation ?? '').length;
-        if (textLen > 0 && _isPlaying) {
-            final holdTime = _realtimeMs - (accum + timing.transitionDurationMs);
-            final typeTimeMs = (textLen / 20.0) * 1000.0;
-            if (holdTime > 0 && holdTime < typeTimeMs) {
-                PreviewSoundService().startTyping();
-            } else {
-                PreviewSoundService().stopTyping();
-            }
-        } else {
-            PreviewSoundService().stopTyping();
-        }
-        
-        return;
-      }
-      accum += total;
-    }
-    
-    // If we exceed total duration, stop playback
-    if (_realtimeMs >= accum) {
-      _isPlaying = false;
-      _ticker.stop();
-      _lastTick = null;
-    }
+    });
   }
 
   void _updateResolvedTimings() {
     if (_project != null) {
-      _resolvedTimings = TimingResolver().resolveAllTimings(_project!.game.plies, _project!.timeline.timingRules);
+      _engine?.updateProject(_project!);
     }
   }
 
@@ -205,8 +151,35 @@ class _EditorScreenState extends State<EditorScreen>
 
   // â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  double get _totalMs => _resolvedTimings.fold(
-      0.0, (s, t) => s + t.holdDurationMs + t.transitionDurationMs);
+  void _addTimelineItem(TimelineItem item, TrackType type) {
+    setState(() {
+      final tracks = List<Track>.from(_project!.timeline.tracks);
+      int trackIdx = tracks.indexWhere((t) => t.type == type);
+      if (trackIdx < 0) {
+         tracks.add(Track(name: type.name, type: type, items: [item]));
+      } else {
+         final nt = tracks[trackIdx];
+         tracks[trackIdx] = nt.copyWith(items: List.from(nt.items)..add(item));
+      }
+      _project = _project!.copyWith(timeline: _project!.timeline.copyWith(tracks: tracks));
+      context.read<ProjectService>().saveProject(_project!);
+    });
+  }
+  
+  void _removeTimelineItem(String id) {
+    setState(() {
+      final tracks = _project!.timeline.tracks.map((track) {
+         if (track.items.any((i) => i.id == id)) {
+           return track.copyWith(items: track.items.where((i) => i.id != id).toList());
+         }
+         return track;
+      }).toList();
+      _project = _project!.copyWith(timeline: _project!.timeline.copyWith(tracks: tracks));
+      context.read<ProjectService>().saveProject(_project!);
+    });
+  }
+
+
 
   String _fmt(double ms) {
     final secs = (ms / 1000).floor();
@@ -229,21 +202,63 @@ class _EditorScreenState extends State<EditorScreen>
           backgroundColor: _bg,
           body: Center(child: CircularProgressIndicator(color: _accent)));
     }
-    return Scaffold(
-      backgroundColor: _bg,
-      body: Column(
-        children: [
-          _toolbar(),
-          Expanded(
-            child: Row(children: [
-              _moveList(),
-              Expanded(flex: 5, child: _preview()),
-              _rightPanel(),
-            ]),
-          ),
-          _bottomBar(),
-        ],
+    return ChangeNotifierProvider<SelectionModel>.value(
+      value: _selectionModel,
+      child: Scaffold(
+        backgroundColor: _bg,
+        body: Column(
+          children: [
+            _toolbar(),
+            Expanded(
+              child: Row(children: [
+                _moveList(),
+                Expanded(flex: 5, child: Stack(
+                  children: [
+                    _preview(),
+                    Positioned(
+                      right: 20, top: 20,
+                      child: _buildGizmoToolbar(),
+                    ),
+                  ],
+                )),
+                _rightPanel(),
+              ]),
+            ),
+            _bottomBar(),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildGizmoToolbar() {
+    return Consumer<SelectionModel>(
+      builder: (context, selection, child) {
+        return Container(
+          decoration: BoxDecoration(
+            color: _surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: _border),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.near_me_outlined),
+                color: selection.toolMode == ToolMode.select ? _accent : _textSec,
+                tooltip: 'Select & Transform',
+                onPressed: () => selection.setToolMode(ToolMode.select),
+              ),
+              IconButton(
+                icon: const Icon(Icons.edit_outlined),
+                color: selection.toolMode == ToolMode.drawArrow ? _accent : _textSec,
+                tooltip: 'Draw Arrow',
+                onPressed: () => selection.setToolMode(ToolMode.drawArrow),
+              ),
+            ],
+          ),
+        );
+      }
     );
   }
 
@@ -364,11 +379,11 @@ class _EditorScreenState extends State<EditorScreen>
                         style: const TextStyle(fontSize: 10, color: _textSec, fontFamily: 'monospace')),
                   ),
                   Expanded(child: _MoveChip(san: wp.moveSan, active: wa, flagged: wp.isFlagged,
-                      hasNote: (wp.annotation ?? '').isNotEmpty, onTap: () => _goToPly(wi + 1))),
+                      hasNote: (wp.annotation ?? '').isNotEmpty, onTap: () => _engine!.goToPly(wi + 1))),
                   const SizedBox(width: 2),
                   Expanded(child: bp != null
                       ? _MoveChip(san: bp.moveSan, active: ba, flagged: bp.isFlagged,
-                          hasNote: (bp.annotation ?? '').isNotEmpty, onTap: () => _goToPly(bi + 1))
+                          hasNote: (bp.annotation ?? '').isNotEmpty, onTap: () => _engine!.goToPly(bi + 1))
                       : const SizedBox()),
                 ]),
               );
@@ -397,11 +412,20 @@ class _EditorScreenState extends State<EditorScreen>
                 clipBehavior: Clip.antiAlias,
                 child: FittedBox(
                   fit: BoxFit.contain,
-                  child: RenderEngineWidget(
-                    project: _project!,
-                    preset: const RenderPreset(name: 'Preview', width: 1920, height: 1080, fps: 60, videoBitrate: 5000),
-                    clock: _clock,
-                    resolvedTimings: _resolvedTimings,
+                  child: Stack(
+                    children: [
+                      RenderEngineWidget(
+                        project: _project!,
+                        preset: const RenderPreset(name: 'Preview', width: 1920, height: 1080, fps: 60, videoBitrate: 5000),
+                        clock: _clock,
+                        resolvedTimings: _engine!.resolvedTimings,
+                      ),
+                      EditorGizmoLayer(
+                        project: _project!,
+                        preset: const RenderPreset(name: 'Preview', width: 1920, height: 1080, fps: 60, videoBitrate: 5000),
+                        engine: _engine!,
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -413,8 +437,9 @@ class _EditorScreenState extends State<EditorScreen>
       );
 
   Widget _scrubber() {
-    final total = _totalMs;
-    final progress = total > 0 ? (_realtimeMs / total).clamp(0.0, 1.0) : 0.0;
+    final total = _engine!.totalMs;
+    final realtime = _engine!.currentRealtimeMs;
+    final progress = total > 0 ? (realtime / total).clamp(0.0, 1.0) : 0.0;
     return Column(children: [
       SliderTheme(
         data: SliderThemeData(
@@ -426,16 +451,13 @@ class _EditorScreenState extends State<EditorScreen>
         ),
         child: Slider(
           value: progress,
-          onChanged: (v) => setState(() {
-            _realtimeMs = v * total;
-            _clock.seekToTime(_realtimeMs);
-          }),
+          onChanged: (v) => _engine!.seek(v * total),
         ),
       ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          Text(_fmt(_realtimeMs), style: const TextStyle(fontSize: 11, color: _textSec, fontFamily: 'monospace')),
+          Text(_fmt(realtime), style: const TextStyle(fontSize: 11, color: _textSec, fontFamily: 'monospace')),
           Text(_fmt(total), style: const TextStyle(fontSize: 11, color: _textSec, fontFamily: 'monospace')),
         ]),
       ),
@@ -550,26 +572,26 @@ class _EditorScreenState extends State<EditorScreen>
       const _Label('ARROWS'),
       const SizedBox(height: 6),
       if (ply != null)
-        ...ply.arrows.asMap().entries.map((e) => _Chip(
-              label: '${e.value.fromSquare} â†’ ${e.value.toSquare}',
-              onDelete: () => setState(() {
-                final p = _project!.game.plies[_currentPlyIndex - 1];
-                final na = List<BoardArrow>.from(p.arrows)..removeAt(e.key);
-                _project!.game.plies[_currentPlyIndex - 1] = p.copyWith(arrows: na);
-                context.read<ProjectService>().saveProject(_project!);
-              }),
-            )),
+        ..._project!.timeline.tracks
+            .expand((t) => t.items)
+            .whereType<ArrowItem>()
+            .where((a) => a.sourcePlyIndex == ply.index)
+            .map((a) => _Chip(
+                  label: '${a.fromSquare} -> ${a.toSquare}',
+                  onDelete: () => _removeTimelineItem(a.id),
+                )),
       const SizedBox(height: 6),
       _Btn(
         label: 'Add Arrow', icon: Icons.arrow_forward,
         onPressed: () {
-          if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length) {
-            setState(() {
-              final p = _project!.game.plies[_currentPlyIndex - 1];
-              final na = List<BoardArrow>.from(p.arrows)..add(BoardArrow(fromSquare: 'e2', toSquare: 'e4'));
-              _project!.game.plies[_currentPlyIndex - 1] = p.copyWith(arrows: na);
-              context.read<ProjectService>().saveProject(_project!);
-            });
+          if (ply != null) {
+             _addTimelineItem(ArrowItem(
+                startTimeMs: _engine!.currentRealtimeMs.toInt(),
+                endTimeMs: _engine!.currentRealtimeMs.toInt() + 2000,
+                sourcePlyIndex: ply.index,
+                fromSquare: 'e2',
+                toSquare: 'e4'
+             ), TrackType.annotation);
           }
         },
       ),
@@ -577,27 +599,27 @@ class _EditorScreenState extends State<EditorScreen>
       const _Label('FLOATING LABELS'),
       const SizedBox(height: 6),
       if (ply != null)
-        ...ply.floatingTexts.asMap().entries.map((e) => _Chip(
-              label: e.value.text,
-              onDelete: () => setState(() {
-                final p = _project!.game.plies[_currentPlyIndex - 1];
-                final nt = List<FloatingText>.from(p.floatingTexts)..removeAt(e.key);
-                _project!.game.plies[_currentPlyIndex - 1] = p.copyWith(floatingTexts: nt);
-                context.read<ProjectService>().saveProject(_project!);
-              }),
-            )),
+        ..._project!.timeline.tracks
+            .expand((t) => t.items)
+            .whereType<FloatingTextItem>()
+            .where((t) => t.sourcePlyIndex == ply.index)
+            .map((t) => _Chip(
+                  label: t.text,
+                  onDelete: () => _removeTimelineItem(t.id),
+                )),
       const SizedBox(height: 6),
       _Btn(
         label: 'Add Label', icon: Icons.text_fields,
         onPressed: () {
-          if (_currentPlyIndex > 0 && _currentPlyIndex <= _project!.game.plies.length) {
-            setState(() {
-              final p = _project!.game.plies[_currentPlyIndex - 1];
-              final nt = List<FloatingText>.from(p.floatingTexts)
-                ..add(const FloatingText(text: 'New Text', x: 0.5, y: 0.1));
-              _project!.game.plies[_currentPlyIndex - 1] = p.copyWith(floatingTexts: nt);
-              context.read<ProjectService>().saveProject(_project!);
-            });
+          if (ply != null) {
+             _addTimelineItem(FloatingTextItem(
+                startTimeMs: _engine!.currentRealtimeMs.toInt(),
+                endTimeMs: _engine!.currentRealtimeMs.toInt() + 2000,
+                sourcePlyIndex: ply.index,
+                text: 'New Text',
+                x: AnimatableProperty.constant(0.5),
+                y: AnimatableProperty.constant(0.1)
+             ), TrackType.annotation);
           }
         },
       ),
@@ -605,7 +627,7 @@ class _EditorScreenState extends State<EditorScreen>
   }
 
   Widget _overlaysTab() {
-    final ols = _project!.timeline.layers.where((l) => l.type == LayerType.overlay).toList();
+    final ols = _project!.timeline.tracks.expand((t) => t.items).whereType<OverlayItem>().toList();
     return ListView(padding: const EdgeInsets.all(14), children: [
       const _Label('MEDIA OVERLAYS'),
       const SizedBox(height: 8),
@@ -629,11 +651,7 @@ class _EditorScreenState extends State<EditorScreen>
                 Text('@ ${layer.startTimeMs}ms', style: const TextStyle(fontSize: 10, color: _textSec)),
               ])),
               GestureDetector(
-                onTap: () => setState(() {
-                  final nl = List<Layer>.from(_project!.timeline.layers)..removeWhere((l) => l.id == layer.id);
-                  _project = _project!.copyWith(timeline: _project!.timeline.copyWith(layers: nl));
-                  context.read<ProjectService>().saveProject(_project!);
-                }),
+                onTap: () => _removeTimelineItem(layer.id),
                 child: const Icon(Icons.delete_outline_rounded, size: 16, color: _red),
               ),
             ]),
@@ -646,19 +664,15 @@ class _EditorScreenState extends State<EditorScreen>
         onPressed: () async {
           final result = await FilePicker.platform.pickFiles(type: FileType.media);
           if (result != null && result.files.single.path != null) {
-            setState(() {
-              final nl = List<Layer>.from(_project!.timeline.layers)
-                ..add(Layer(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  type: LayerType.overlay,
-                  assetPath: result.files.single.path!,
-                  startTimeMs: _realtimeMs.toInt(),
-                  endTimeMs: _realtimeMs.toInt() + 5000,
-                  x: 0.1, y: 0.1, width: 0.3, height: 0.3,
-                ));
-              _project = _project!.copyWith(timeline: _project!.timeline.copyWith(layers: nl));
-              context.read<ProjectService>().saveProject(_project!);
-            });
+             _addTimelineItem(OverlayItem(
+                assetPath: result.files.single.path!,
+                startTimeMs: _engine!.currentRealtimeMs.toInt(),
+                endTimeMs: _engine!.currentRealtimeMs.toInt() + 5000,
+                x: AnimatableProperty.constant(0.1), 
+                y: AnimatableProperty.constant(0.1), 
+                width: AnimatableProperty.constant(0.3), 
+                height: AnimatableProperty.constant(0.3),
+             ), TrackType.overlay);
           }
         },
       ),
@@ -696,17 +710,17 @@ class _EditorScreenState extends State<EditorScreen>
               icon: const Icon(Icons.skip_previous_rounded),
               color: _currentPlyIndex > 0 ? _textPri : _border,
               iconSize: 22, splashRadius: 18,
-              onPressed: _currentPlyIndex > 0 ? () => _goToPly(_currentPlyIndex - 1) : null,
+              onPressed: _currentPlyIndex > 0 ? () => _engine!.goToPly(_currentPlyIndex - 1) : null,
             ),
             GestureDetector(
-              onTap: _togglePlay,
+              onTap: _engine!.togglePlay,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 width: 38, height: 38,
                 decoration: BoxDecoration(
-                    color: _isPlaying ? _accent : _accentDim,
+                    color: _engine!.isPlaying ? _accent : _accentDim,
                     borderRadius: BorderRadius.circular(20)),
-                child: Icon(_isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                child: Icon(_engine!.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
                     color: Colors.white, size: 22),
               ),
             ),
@@ -714,7 +728,7 @@ class _EditorScreenState extends State<EditorScreen>
               icon: const Icon(Icons.skip_next_rounded),
               color: _currentPlyIndex < plies.length ? _textPri : _border,
               iconSize: 22, splashRadius: 18,
-              onPressed: _currentPlyIndex < plies.length ? () => _goToPly(_currentPlyIndex + 1) : null,
+              onPressed: _currentPlyIndex < plies.length ? () => _engine!.goToPly(_currentPlyIndex + 1) : null,
             ),
             const SizedBox(width: 8),
             Container(width: 1, height: 24, color: _border),
@@ -730,26 +744,24 @@ class _EditorScreenState extends State<EditorScreen>
             const SizedBox(width: 8),
             DropdownButtonHideUnderline(
               child: DropdownButton<double>(
-                value: _playbackSpeed,
+                value: _engine!.playbackSpeed,
                 dropdownColor: _surface2,
                 style: const TextStyle(color: _textPri, fontSize: 13),
                 borderRadius: BorderRadius.circular(8),
                 items: [0.25, 0.5, 1.0, 1.5, 2.0]
                     .map((s) => DropdownMenuItem(value: s, child: Text('${s}Ã—')))
                     .toList(),
-                onChanged: (val) { if (val != null) setState(() => _playbackSpeed = val); },
+                onChanged: (val) { if (val != null) _engine!.setSpeed(val); },
               ),
             ),
           ]),
         ),
         SizedBox(
-          height: 96,
+          height: 200,
           child: TimelineEditor(
             project: _project!,
-            resolvedTimings: _resolvedTimings,
-            currentPlyIndex: _currentPlyIndex,
-            onPlySelected: _goToPly,
-            onTimingChanged: (_) {},
+            currentRealtimeMs: _engine!.currentRealtimeMs,
+            onSeek: _engine!.seek,
           ),
         ),
       ]),

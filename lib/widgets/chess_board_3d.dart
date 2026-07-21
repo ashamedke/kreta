@@ -155,26 +155,25 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
       z = -z;
     }
     
-    // The pieces are simple OBJs so we can't easily tint them via flutter_cube API alone without modifying MTLs.
-    // However, the standard piece.obj acts as a placeholder.
-    // Simple placeholder scaling depending on piece type
-    double scaleY = 1.0;
+    final isWhite = pieceChar.toUpperCase() == pieceChar;
     final lowerChar = pieceChar.toLowerCase();
-    if (lowerChar == 'p') scaleY = 1.0;
-    else if (lowerChar == 'n') scaleY = 1.2;
-    else if (lowerChar == 'b') scaleY = 1.4;
-    else if (lowerChar == 'r') scaleY = 1.3;
-    else if (lowerChar == 'q') scaleY = 1.8;
-    else if (lowerChar == 'k') scaleY = 2.0;
+    
+    String pieceName = 'pawn';
+    if (lowerChar == 'p') pieceName = 'pawn';
+    else if (lowerChar == 'n') pieceName = 'knight';
+    else if (lowerChar == 'b') pieceName = 'bishop';
+    else if (lowerChar == 'r') pieceName = 'rook';
+    else if (lowerChar == 'q') pieceName = 'queen';
+    else if (lowerChar == 'k') pieceName = 'king';
+
+    final colorPrefix = isWhite ? 'white' : 'black';
+    final fileName = 'assets/models/${colorPrefix}_$pieceName.obj';
 
     final piece = Object(
-      fileName: 'assets/models/piece.obj',
+      fileName: fileName,
       position: Vector3(x, 0.0, z),
-      scale: Vector3(0.5, scaleY, 0.5),
+      scale: Vector3(1.0, 1.0, 1.0),
     );
-    
-    // A proper 3D renderer would apply different materials. 
-    // flutter_cube parses MTL files. Since we just have an OBJ, it defaults to a grey color.
     
     _scene!.world.add(piece);
     _pieceObjects.add(piece);

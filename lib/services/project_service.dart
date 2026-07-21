@@ -33,6 +33,98 @@ class ProjectService extends ChangeNotifier {
         try {
           final content = await entity.readAsString();
           final jsonMap = jsonDecode(content) as Map<String, dynamic>;
+          
+          // MIGRATION: Convert old 'layers' to 'tracks' and 'Ply' annotations to 'AnnotationTrack'
+          final gameJson = jsonMap['game'] as Map<String, dynamic>?;
+          List<Map<String, dynamic>> migratingArrows = [];
+          List<Map<String, dynamic>> migratingTexts = [];
+          
+          if (gameJson != null) {
+            final plies = gameJson['plies'] as List<dynamic>?;
+            if (plies != null) {
+               for (var plyJson in plies) {
+                  final arrows = plyJson['arrows'] as List<dynamic>?;
+                  if (arrows != null && arrows.isNotEmpty) {
+                    for (var arrow in arrows) {
+                      arrow['sourcePlyIndex'] = plyJson['index'];
+                      migratingArrows.add(arrow);
+                    }
+                  }
+                  final texts = plyJson['floatingTexts'] as List<dynamic>?;
+                  if (texts != null && texts.isNotEmpty) {
+                    for (var text in texts) {
+                      text['sourcePlyIndex'] = plyJson['index'];
+                      migratingTexts.add(text);
+                    }
+                  }
+                  plyJson.remove('arrows');
+                  plyJson.remove('floatingTexts');
+               }
+            }
+          }
+          
+          final timelineJson = jsonMap['timeline'] as Map<String, dynamic>?;
+          if (timelineJson != null) {
+            List<dynamic> tracks = timelineJson['tracks'] ?? [];
+            final layers = timelineJson['layers'] as List<dynamic>?;
+            if (layers != null) {
+               final overlayTrack = {
+                 'id': 'migrated-overlay-track',
+                 'name': 'Overlays',
+                 'type': 'overlay',
+                 'items': layers.map((l) {
+                   l['type'] = 'overlay';
+                   return l;
+                 }).toList(),
+               };
+               tracks.add(overlayTrack);
+               timelineJson.remove('layers');
+            }
+            
+            if (migratingArrows.isNotEmpty || migratingTexts.isNotEmpty) {
+               Map<String, dynamic>? annotationTrack;
+               try {
+                 annotationTrack = tracks.firstWhere((t) => t['type'] == 'annotation');
+               } catch (_) {
+                 annotationTrack = {
+                   'id': 'migrated-annotation-track',
+                   'name': 'Annotations',
+                   'type': 'annotation',
+                   'items': []
+                 };
+                 tracks.add(annotationTrack);
+               }
+               
+               List<dynamic> items = annotationTrack!['items'];
+               for (var a in migratingArrows) {
+                 items.add({
+                   'type': 'arrow',
+                   'id': 'migrated-arrow-${a['sourcePlyIndex']}',
+                   'startTimeMs': 0, // Sync will fix this
+                   'sourcePlyIndex': a['sourcePlyIndex'],
+                   'fromSquare': a['fromSquare'],
+                   'toSquare': a['toSquare'],
+                   'color': a['color'],
+                   'text': a['text'],
+                 });
+               }
+               for (var t in migratingTexts) {
+                 items.add({
+                   'type': 'floatingText',
+                   'id': 'migrated-text-${t['sourcePlyIndex']}',
+                   'startTimeMs': 0,
+                   'sourcePlyIndex': t['sourcePlyIndex'],
+                   'text': t['text'],
+                   'x': t['x'],
+                   'y': t['y'],
+                   'color': t['color'],
+                   'fontSize': t['fontSize'],
+                 });
+               }
+            }
+            timelineJson['tracks'] = tracks;
+          }
+
           loadedProjects.add(Project.fromJson(jsonMap));
         } catch (e) {
           debugPrint('Error parsing project file ${entity.path}: $e');

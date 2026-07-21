@@ -55,6 +55,7 @@ class FfmpegService extends ChangeNotifier {
   bool get isAvailable => _isAvailable;
   
   String _ffmpegPath = 'ffmpeg';
+  String get ffmpegPath => _ffmpegPath;
   
   Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();

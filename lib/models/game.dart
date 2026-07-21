@@ -70,8 +70,6 @@ class Ply {
     this.annotation,
     this.typingSpeedOverride,
     this.isFlagged = false,
-    this.arrows = const [],
-    this.floatingTexts = const [],
   });
 
   factory Ply.fromJson(Map<String, dynamic> json) {
@@ -93,8 +91,6 @@ class Ply {
       annotation: json['annotation'] as String?,
       typingSpeedOverride: (json['typingSpeedOverride'] as num?)?.toDouble(),
       isFlagged: json['isFlagged'] as bool? ?? false,
-      arrows: (json['arrows'] as List<dynamic>?)?.map((e) => BoardArrow.fromJson(e)).toList() ?? [],
-      floatingTexts: (json['floatingTexts'] as List<dynamic>?)?.map((e) => FloatingText.fromJson(e)).toList() ?? [],
     );
   }
 
@@ -117,8 +113,6 @@ class Ply {
       'annotation': annotation,
       'typingSpeedOverride': typingSpeedOverride,
       'isFlagged': isFlagged,
-      'arrows': arrows.map((e) => e.toJson()).toList(),
-      'floatingTexts': floatingTexts.map((e) => e.toJson()).toList(),
     };
   }
 
@@ -140,8 +134,6 @@ class Ply {
     String? annotation,
     double? typingSpeedOverride,
     bool? isFlagged,
-    List<BoardArrow>? arrows,
-    List<FloatingText>? floatingTexts,
   }) {
     return Ply(
       index: index ?? this.index,
@@ -161,8 +153,6 @@ class Ply {
       annotation: annotation ?? this.annotation,
       typingSpeedOverride: typingSpeedOverride ?? this.typingSpeedOverride,
       isFlagged: isFlagged ?? this.isFlagged,
-      arrows: arrows ?? this.arrows,
-      floatingTexts: floatingTexts ?? this.floatingTexts,
     );
   }
 }

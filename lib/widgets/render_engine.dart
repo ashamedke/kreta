@@ -51,9 +51,9 @@ class RenderEngineWidget extends StatelessWidget {
     bool isFlagged = false;
     bool isCheck = false;
     double textRevealProgress = 1.0;
-    List<FloatingText> currentFloatingTexts = [];
-    List<BoardArrow> currentArrows = [];
-    List<Layer> activeOverlays = [];
+    List<FloatingTextItem> currentFloatingTexts = [];
+    List<ArrowItem> currentArrows = [];
+    List<OverlayItem> activeOverlays = [];
 
     for (int i = 0; i < project.game.plies.length; i++) {
       final ply = project.game.plies[i];
@@ -65,8 +65,6 @@ class RenderEngineWidget extends StatelessWidget {
         annotationText = ply.annotation ?? '';
         isFlagged = ply.isFlagged;
         isCheck = ply.isCheck;
-        currentFloatingTexts = ply.floatingTexts;
-        currentArrows = ply.arrows;
         
         final timeInPly = currentTimeMs - accumulatedTimeMs;
         
@@ -105,7 +103,6 @@ class RenderEngineWidget extends StatelessWidget {
           } else {
              textRevealProgress = 1.0;
           }
-          // In holding phase, check applies. (Actually, check applies as soon as the move finishes, which is the hold phase).
         }
         break;
       }
@@ -119,18 +116,18 @@ class RenderEngineWidget extends StatelessWidget {
         annotationText = ply.annotation ?? '';
         isFlagged = ply.isFlagged;
         isCheck = ply.isCheck;
-        currentFloatingTexts = ply.floatingTexts;
-        currentArrows = ply.arrows;
       }
     }
 
-    // Determine active media overlays
-    for (var layer in project.timeline.layers) {
-      if (layer.type == LayerType.overlay) {
-         if (currentTimeMs >= layer.startTimeMs && 
-             (layer.endTimeMs == null || currentTimeMs < layer.endTimeMs!)) {
-            activeOverlays.add(layer);
-         }
+    // Determine active items from tracks
+    for (final track in project.timeline.tracks) {
+      for (final item in track.items) {
+        if (currentTimeMs >= item.startTimeMs && 
+            (item.endTimeMs == null || currentTimeMs < item.endTimeMs!)) {
+          if (item is OverlayItem) activeOverlays.add(item);
+          if (item is ArrowItem) currentArrows.add(item);
+          if (item is FloatingTextItem) currentFloatingTexts.add(item);
+        }
       }
     }
 
@@ -163,7 +160,7 @@ class RenderEngineWidget extends StatelessWidget {
                 animateFrom: animateFrom,
                 animateTo: animateTo,
                 isCheck: isCheck,
-                arrows: currentArrows,
+                arrows: currentArrows.map((a) => BoardArrow(fromSquare: a.fromSquare, toSquare: a.toSquare, color: a.color, text: a.text)).toList(),
               ),
             ),
             // Analysis log — optional overlay, off by default. Drawn on
@@ -191,8 +188,8 @@ class RenderEngineWidget extends StatelessWidget {
             // Floating Texts
             for (final text in currentFloatingTexts)
               Positioned(
-                left: w * text.x,
-                top: h * text.y,
+                left: w * text.x.evaluate(currentTimeMs),
+                top: h * text.y.evaluate(currentTimeMs),
                 child: Text(
                   text.text,
                   style: TextStyle(
@@ -205,12 +202,12 @@ class RenderEngineWidget extends StatelessWidget {
             // Media Overlays
             for (final layer in activeOverlays)
               Positioned(
-                left: w * (layer.x ?? 0.0),
-                top: h * (layer.y ?? 0.0),
-                width: w * (layer.width ?? 1.0),
-                height: h * (layer.height ?? 1.0),
+                left: w * (layer.x.evaluate(currentTimeMs) ?? 0.0),
+                top: h * (layer.y.evaluate(currentTimeMs) ?? 0.0),
+                width: w * (layer.width.evaluate(currentTimeMs) ?? 1.0),
+                height: h * (layer.height.evaluate(currentTimeMs) ?? 1.0),
                 child: Opacity(
-                  opacity: layer.opacity,
+                  opacity: layer.opacity.evaluate(currentTimeMs),
                   child: Image.file(
                     File(layer.assetPath),
                     fit: BoxFit.contain,

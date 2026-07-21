@@ -1,24 +1,19 @@
 import 'package:flutter/material.dart';
 import '../utils/constants.dart';
-
-import '../models/timing.dart';
 import '../models/project.dart';
-import '../services/timing_resolver.dart';
+import '../controllers/timeline_controller.dart';
+import 'timeline_track_view.dart';
 
 class TimelineEditor extends StatefulWidget {
   final Project project;
-  final List<ResolvedTiming> resolvedTimings;
-  final int currentPlyIndex;
-  final ValueChanged<int> onPlySelected;
-  final ValueChanged<TimingRules> onTimingChanged;
+  final double currentRealtimeMs;
+  final ValueChanged<double> onSeek;
 
   const TimelineEditor({
     super.key,
     required this.project,
-    required this.resolvedTimings,
-    required this.currentPlyIndex,
-    required this.onPlySelected,
-    required this.onTimingChanged,
+    required this.currentRealtimeMs,
+    required this.onSeek,
   });
 
   @override
@@ -26,131 +21,152 @@ class TimelineEditor extends StatefulWidget {
 }
 
 class _TimelineEditorState extends State<TimelineEditor> {
+  final TimelineController _controller = TimelineController();
   final ScrollController _scrollController = ScrollController();
 
-  static const double _itemHMargin = 4.0; // 2px each side
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(_onControllerChanged);
+    _scrollController.addListener(_onScrollChanged);
+  }
 
   @override
   void didUpdateWidget(TimelineEditor oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.currentPlyIndex != oldWidget.currentPlyIndex) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToPly(widget.currentPlyIndex));
+    // Optionally auto-scroll if playhead moves out of view
+    final playheadX = widget.currentRealtimeMs * _controller.pixelsPerMs;
+    if (playheadX > _scrollController.offset + MediaQuery.of(context).size.width || 
+        playheadX < _scrollController.offset) {
+      if (_scrollController.hasClients) {
+         _scrollController.jumpTo((playheadX - 100).clamp(0.0, _scrollController.position.maxScrollExtent));
+      }
     }
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_onControllerChanged);
+    _scrollController.removeListener(_onScrollChanged);
     _scrollController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
-  double _widthForPly(int index) {
-    final timing = widget.resolvedTimings.length > index ? widget.resolvedTimings[index] : null;
-    final duration = timing != null ? timing.holdDurationMs + timing.transitionDurationMs : 2000;
-    return (duration / 100).clamp(40.0, 300.0) + _itemHMargin;
+  void _onControllerChanged() {
+    setState(() {}); // Rebuild when zoom changes
   }
 
-  void _scrollToPly(int index) {
-    if (!_scrollController.hasClients || index < 0) return;
+  void _onScrollChanged() {
+    _controller.updateScrollOffset(_scrollController.offset);
+  }
 
-    double offsetBeforeItem = 0;
-    for (int i = 0; i < index; i++) {
-      offsetBeforeItem += _widthForPly(i);
-    }
-    final itemWidth = _widthForPly(index);
-    final viewportWidth = _scrollController.position.viewportDimension;
-
-    // Center the selected item in the viewport when possible.
-    double target = offsetBeforeItem - (viewportWidth - itemWidth) / 2;
-    target = target.clamp(0.0, _scrollController.position.maxScrollExtent);
-
-    _scrollController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOut,
-    );
+  void _handleTap(TapUpDetails details) {
+    final tapX = details.localPosition.dx;
+    final timeMs = tapX / _controller.pixelsPerMs;
+    widget.onSeek(timeMs);
   }
 
   @override
   Widget build(BuildContext context) {
-    double totalDurationMs = 0;
-    for (var t in widget.resolvedTimings) {
-      totalDurationMs += (t.holdDurationMs + t.transitionDurationMs);
+    // Total width is based on the end of the last item, or a default large width.
+    double maxTimeMs = 60000; // Default 1 minute
+    for (final track in widget.project.timeline.tracks) {
+       for (final item in track.items) {
+          final end = item.endTimeMs ?? (item.startTimeMs + 2000);
+          if (end > maxTimeMs) maxTimeMs = end.toDouble();
+       }
     }
-
+    
+    // Add padding to the end
+    maxTimeMs += 5000;
+    
+    final canvasWidth = maxTimeMs * _controller.pixelsPerMs;
+    
     return Container(
-      height: 120,
       decoration: const BoxDecoration(
         color: AppColors.background,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(8.0),
+          // Toolbar (Zoom controls)
+          Container(
+            height: 32,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text('Timeline', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold)),
-                Text(
-                  'Total Duration: ${(totalDurationMs / 1000).toStringAsFixed(1)}s',
-                  style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                ),
+                const Text('Timeline', style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 12)),
+                const Spacer(),
+                IconButton(icon: const Icon(Icons.zoom_out, size: 16), color: AppColors.textSecondary, onPressed: _controller.zoomOut, padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                const SizedBox(width: 12),
+                IconButton(icon: const Icon(Icons.zoom_in, size: 16), color: AppColors.textSecondary, onPressed: _controller.zoomIn, padding: EdgeInsets.zero, constraints: const BoxConstraints()),
               ],
             ),
           ),
+          
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              scrollDirection: Axis.horizontal,
-              itemCount: widget.project.game.plies.length,
-              itemBuilder: (context, index) {
-                final ply = widget.project.game.plies[index];
-                final width = _widthForPly(index) - _itemHMargin;
-                final isSelected = index == widget.currentPlyIndex;
-
-                Color blockColor = AppColors.surface;
-                if (ply.moveSan.contains('#')) {
-                  blockColor = AppColors.accentPurple;
-                } else if (ply.moveSan.contains('+')) {
-                  blockColor = AppColors.accentRed;
-                } else if (ply.moveSan.contains('x')) {
-                  blockColor = AppColors.accentOrange;
-                }
-
-                return GestureDetector(
-                  onTap: () => widget.onPlySelected(index),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 150),
-                    curve: Curves.easeOut,
-                    width: width,
-                    margin: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: blockColor,
-                      borderRadius: BorderRadius.circular(4),
-                      border: isSelected ? Border.all(color: AppColors.accentBlue, width: 2) : Border.all(color: AppColors.border),
-                      boxShadow: isSelected
-                          ? [
-                              BoxShadow(
-                                color: AppColors.accentBlue.withValues(alpha: 0.35),
-                                blurRadius: 8,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Track Headers (Left Panel)
+                Container(
+                  width: 120,
+                  decoration: const BoxDecoration(
+                    color: AppColors.surface,
+                    border: Border(right: BorderSide(color: AppColors.border)),
+                  ),
+                  child: ListView(
+                    children: widget.project.timeline.tracks.map((track) {
+                      return Container(
+                        height: 40,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        alignment: Alignment.centerLeft,
+                        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+                        child: Text(track.name, style: const TextStyle(color: AppColors.textSecondary, fontSize: 11, overflow: TextOverflow.ellipsis)),
+                      );
+                    }).toList(),
+                  ),
+                ),
+                
+                // Track Canvas (Right Panel)
+                Expanded(
+                  child: SingleChildScrollView(
+                    controller: _scrollController,
+                    scrollDirection: Axis.horizontal,
+                    child: GestureDetector(
+                      onTapUp: _handleTap,
+                      child: SizedBox(
+                        width: canvasWidth,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            // Tracks
+                            Column(
+                              children: widget.project.timeline.tracks.map((track) {
+                                return TimelineTrackView(track: track, controller: _controller);
+                              }).toList(),
+                            ),
+                            
+                            // Playhead
+                            Positioned(
+                              left: widget.currentRealtimeMs * _controller.pixelsPerMs,
+                              top: 0,
+                              bottom: 0,
+                              child: Container(
+                                width: 2,
+                                color: AppColors.accentRed,
                               ),
-                            ]
-                          : const [],
-                    ),
-                    child: Center(
-                      child: Text(
-                        ply.moveSan,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : AppColors.textPrimary,
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                );
-              },
+                ),
+              ],
             ),
           ),
         ],
