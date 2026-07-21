@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 
 enum ToolMode {
   select,
-  drawArrow,
 }
 
 class SelectionModel extends ChangeNotifier {
@@ -26,10 +25,6 @@ class SelectionModel extends ChangeNotifier {
   void setToolMode(ToolMode mode) {
     if (_toolMode != mode) {
       _toolMode = mode;
-      // If we switch to draw arrow, deselect the current item
-      if (mode == ToolMode.drawArrow) {
-        _selectedItemId = null;
-      }
       notifyListeners();
     }
   }

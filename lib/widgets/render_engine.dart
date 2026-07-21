@@ -7,7 +7,7 @@ import '../models/render_job.dart';
 import '../models/timeline.dart';
 import '../services/timing_resolver.dart';
 import '../utils/virtual_clock.dart';
-import 'chess_board_2d.dart';
+import 'chess_board_3d.dart';
 import 'terminal_text.dart';
 
 class RenderEngineWidget extends StatelessWidget {
@@ -150,7 +150,7 @@ class RenderEngineWidget extends StatelessWidget {
             // Board — square, centred in the canvas.
             Align(
               alignment: Alignment.center,
-              child: ChessBoard2D(
+              child: ChessBoard3D(
                 fen: fen,
                 size: boardSize,
                 lastMoveFrom: lastMoveFrom,
@@ -159,7 +159,8 @@ class RenderEngineWidget extends StatelessWidget {
                 animatingPiece: animatingPiece,
                 animateFrom: animateFrom,
                 animateTo: animateTo,
-                isCheck: isCheck,
+                isFlagged: isFlagged,
+                localModelsPath: project.localModelsPath,
                 arrows: currentArrows.map((a) => BoardArrow(fromSquare: a.fromSquare, toSquare: a.toSquare, color: a.color, text: a.text)).toList(),
               ),
             ),

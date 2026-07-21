@@ -15,6 +15,7 @@ class Project {
   final String? outputPath;
   final String? backgroundVideoPath;
   final String? backgroundMusicPath;
+  final String? localModelsPath;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -27,6 +28,7 @@ class Project {
     this.outputPath,
     this.backgroundVideoPath,
     this.backgroundMusicPath,
+    this.localModelsPath,
     DateTime? createdAt,
     DateTime? updatedAt,
   })  : id = id ?? const Uuid().v4(),
@@ -60,6 +62,7 @@ class Project {
       outputPath: json['outputPath'] as String?,
       backgroundVideoPath: json['backgroundVideoPath'] as String?,
       backgroundMusicPath: json['backgroundMusicPath'] as String?,
+      localModelsPath: json['localModelsPath'] as String?,
       createdAt: json['createdAt'] != null
           ? DateTime.parse(json['createdAt'] as String)
           : null,
@@ -79,6 +82,7 @@ class Project {
       'outputPath': outputPath,
       'backgroundVideoPath': backgroundVideoPath,
       'backgroundMusicPath': backgroundMusicPath,
+      'localModelsPath': localModelsPath,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -93,6 +97,7 @@ class Project {
     String? outputPath,
     String? backgroundVideoPath,
     String? backgroundMusicPath,
+    String? localModelsPath,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -105,6 +110,7 @@ class Project {
       outputPath: outputPath ?? this.outputPath,
       backgroundVideoPath: backgroundVideoPath ?? this.backgroundVideoPath,
       backgroundMusicPath: backgroundMusicPath ?? this.backgroundMusicPath,
+      localModelsPath: localModelsPath ?? this.localModelsPath,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -122,6 +128,16 @@ class Project {
     return Project(
       id: id, name: name, game: game, timeline: timeline, layoutType: layoutType,
       outputPath: outputPath, backgroundVideoPath: backgroundVideoPath, backgroundMusicPath: null,
+      localModelsPath: localModelsPath,
+      createdAt: createdAt, updatedAt: updatedAt,
+    );
+  }
+  
+  Project clearLocalModelsPath() {
+    return Project(
+      id: id, name: name, game: game, timeline: timeline, layoutType: layoutType,
+      outputPath: outputPath, backgroundVideoPath: backgroundVideoPath, backgroundMusicPath: backgroundMusicPath,
+      localModelsPath: null,
       createdAt: createdAt, updatedAt: updatedAt,
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import '../utils/constants.dart';
 import '../models/project.dart';
 import '../controllers/timeline_controller.dart';

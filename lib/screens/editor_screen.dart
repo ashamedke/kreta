@@ -44,6 +44,8 @@ class _EditorScreenState extends State<EditorScreen> {
   
   PlaybackEngine? _engine;
   late VirtualClock _clock;
+  
+  bool _isTimelineCollapsed = false;
 
   final _annotationController = TextEditingController();
 
@@ -228,6 +230,77 @@ class _EditorScreenState extends State<EditorScreen> {
 
   // â”€â”€ toolbar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  void _showSettingsDialog() {
+    final textController = TextEditingController(text: _project!.localModelsPath ?? '');
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: _surface,
+        title: const Text('Project Settings', style: TextStyle(color: _textPri)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Local Models Path', style: TextStyle(color: _textSec, fontSize: 13)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: textController,
+                    style: const TextStyle(color: _textPri),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. C:\\Users\\drnew\\Downloads\\chess_set',
+                      hintStyle: TextStyle(color: _textSec),
+                      filled: true,
+                      fillColor: _surface2,
+                      border: OutlineInputBorder(borderSide: BorderSide.none),
+                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () async {
+                    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+                    if (selectedDirectory != null) {
+                      textController.text = selectedDirectory;
+                    }
+                  },
+                  icon: const Icon(Icons.folder_open, color: _accent),
+                  tooltip: 'Browse',
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            const Text('Absolute path to a folder containing board.obj and piece .obj files.', style: TextStyle(color: _textSec, fontSize: 11)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: _textSec)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final newPath = textController.text.trim().isEmpty ? null : textController.text.trim();
+              setState(() {
+                _project = _project!.copyWith(localModelsPath: newPath);
+                if (newPath == null) {
+                  _project = _project!.clearLocalModelsPath();
+                }
+              });
+              context.read<ProjectService>().saveProject(_project!);
+              Navigator.pop(ctx);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: _accent, foregroundColor: Colors.white),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _toolbar() => Container(
         height: 56,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -273,9 +346,19 @@ class _EditorScreenState extends State<EditorScreen> {
               style: const TextStyle(fontSize: 12, color: _textSec),
             ),
           ),
-          const SizedBox(width: 12),
-          Tooltip(
-            message: 'Save',
+            const SizedBox(width: 12),
+            Tooltip(
+              message: 'Settings',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(6),
+                onTap: () => _showSettingsDialog(),
+                child: const Padding(padding: EdgeInsets.all(8),
+                    child: Icon(Icons.settings_outlined, size: 18, color: _textSec)),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Tooltip(
+              message: 'Save',
             child: InkWell(
               borderRadius: BorderRadius.circular(6),
               onTap: () => context.read<ProjectService>().saveProject(_project!),
@@ -713,27 +796,38 @@ class _EditorScreenState extends State<EditorScreen> {
                 style: const TextStyle(color: _textPri, fontSize: 13),
                 borderRadius: BorderRadius.circular(8),
                 items: [0.25, 0.5, 1.0, 1.5, 2.0]
-                    .map((s) => DropdownMenuItem(value: s, child: Text('${s}Ã—')))
+                    .map((s) => DropdownMenuItem(value: s, child: Text('${s}×')))
                     .toList(),
                 onChanged: (val) { if (val != null) _engine!.setSpeed(val); },
               ),
             ),
+            const Spacer(),
+            IconButton(
+              icon: Icon(_isTimelineCollapsed ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: _textSec),
+              tooltip: 'Toggle Timeline',
+              onPressed: () {
+                setState(() {
+                  _isTimelineCollapsed = !_isTimelineCollapsed;
+                });
+              },
+            ),
           ]),
         ),
-        SizedBox(
-          height: 200,
-          child: TimelineEditor(
-            project: _project!,
-            currentRealtimeMs: _engine!.currentRealtimeMs,
-            onSeek: _engine!.seek,
+        if (!_isTimelineCollapsed)
+          SizedBox(
+            height: 200,
+            child: TimelineEditor(
+              project: _project!,
+              currentRealtimeMs: _engine!.currentRealtimeMs,
+              onSeek: _engine!.seek,
+            ),
           ),
-        ),
       ]),
     );
   }
 }
 
-// â”€â”€â”€ shared micro-widgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— shared micro-widgets ——————————————————————————————————————————————————————————————————
 
 class _MoveChip extends StatelessWidget {
   final String san;

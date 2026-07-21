@@ -295,7 +295,7 @@ class FfmpegService extends ChangeNotifier {
       '-r',
       fps.toString(),
       '-i',
-      'tcp://127.0.0.1:$port?listen=1',
+      'tcp://127.0.0.1:$port',
     ];
 
     int inputIndex = 1;

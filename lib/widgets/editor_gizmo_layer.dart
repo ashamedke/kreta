@@ -182,62 +182,83 @@ class _EditorGizmoLayerState extends State<EditorGizmoLayer> {
     
     final currentTimeMs = widget.engine.currentRealtimeMs;
 
-    if (selection.toolMode == ToolMode.drawArrow) {
-      return GestureDetector(
-        onPanStart: (d) => _onArrowPanStart(d, boardSize, w, h),
-        onPanUpdate: (d) => _onArrowPanUpdate(d, boardSize, w, h),
-        onPanEnd: (_) => _onArrowPanEnd(),
-        child: Container(
-          color: Colors.transparent, // Capture all gestures
-          width: w,
-          height: h,
-          child: _arrowStartSquare != null && _arrowCurrentSquare != null
-              ? _buildTemporaryArrow(boardSize, w, h)
-              : null,
-        ),
-      );
-    }
-
     final item = _getSelectedActiveItem(selection, currentTimeMs);
-    if (item == null) return const SizedBox.shrink();
+    
+    Widget content = const SizedBox.shrink();
+    if (item != null) {
+      if (item is OverlayItem) {
+        final currentX = _isDragging && _tempX != null ? _tempX! : (item.x.evaluate(currentTimeMs) ?? 0.0);
+        final currentY = _isDragging && _tempY != null ? _tempY! : (item.y.evaluate(currentTimeMs) ?? 0.0);
+        final currentW = _isDragging && _tempWidth != null ? _tempWidth! : (item.width.evaluate(currentTimeMs) ?? 1.0);
+        final currentH = _isDragging && _tempHeight != null ? _tempHeight! : (item.height.evaluate(currentTimeMs) ?? 1.0);
 
-    if (item is OverlayItem) {
-      final currentX = _isDragging && _tempX != null ? _tempX! : (item.x.evaluate(currentTimeMs) ?? 0.0);
-      final currentY = _isDragging && _tempY != null ? _tempY! : (item.y.evaluate(currentTimeMs) ?? 0.0);
-      final currentW = _isDragging && _tempWidth != null ? _tempWidth! : (item.width.evaluate(currentTimeMs) ?? 1.0);
-      final currentH = _isDragging && _tempHeight != null ? _tempHeight! : (item.height.evaluate(currentTimeMs) ?? 1.0);
+        final left = currentX * w;
+        final top = currentY * h;
+        final width = currentW * w;
+        final height = currentH * h;
 
-      final left = currentX * w;
-      final top = currentY * h;
-      final width = currentW * w;
-      final height = currentH * h;
-
-      return Positioned(
-        left: left,
-        top: top,
-        width: width,
-        height: height,
-        child: _buildTransformHandles(
-          item, 
-          w, h, 
-          currentX, currentY, currentW, currentH
-        ),
-      );
-    } else if (item is FloatingTextItem) {
-      final currentX = _isDragging && _tempX != null ? _tempX! : item.x.evaluate(currentTimeMs);
-      final currentY = _isDragging && _tempY != null ? _tempY! : item.y.evaluate(currentTimeMs);
-      
-      final left = currentX * w;
-      final top = currentY * h;
-      
-      return Positioned(
-        left: left,
-        top: top,
-        child: _buildTextTransformHandles(item, w, h, currentX, currentY),
-      );
+        content = Positioned(
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          child: _buildTransformHandles(
+            item, 
+            w, h, 
+            currentX, currentY, currentW, currentH
+          ),
+        );
+      } else if (item is FloatingTextItem) {
+        final currentX = _isDragging && _tempX != null ? _tempX! : item.x.evaluate(currentTimeMs);
+        final currentY = _isDragging && _tempY != null ? _tempY! : item.y.evaluate(currentTimeMs);
+        
+        final left = currentX * w;
+        final top = currentY * h;
+        
+        content = Positioned(
+          left: left,
+          top: top,
+          child: _buildTextTransformHandles(item, w, h, currentX, currentY),
+        );
+      }
     }
 
-    return const SizedBox.shrink();
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (event.buttons == 2) {
+          setState(() {
+            _arrowStartSquare = _getSquareFromOffset(event.localPosition, boardSize, w, h);
+            _arrowCurrentSquare = _arrowStartSquare;
+          });
+        }
+      },
+      onPointerMove: (event) {
+        if (event.buttons == 2 && _arrowStartSquare != null) {
+          final sq = _getSquareFromOffset(event.localPosition, boardSize, w, h);
+          if (sq != null && sq != _arrowCurrentSquare) {
+            setState(() {
+              _arrowCurrentSquare = sq;
+            });
+          }
+        }
+      },
+      onPointerUp: (event) {
+        if (_arrowStartSquare != null) {
+          _onArrowPanEnd();
+        }
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          content,
+          if (_arrowStartSquare != null && _arrowCurrentSquare != null)
+             _buildTemporaryArrow(boardSize, w, h),
+        ],
+      ),
+    );
+
+
   }
   
   Widget _buildTemporaryArrow(double boardSize, double w, double h) {

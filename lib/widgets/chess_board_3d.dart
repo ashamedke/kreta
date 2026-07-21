@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_cube/flutter_cube.dart';
+import 'dart:math' as math;
+import '../models/game.dart' show BoardArrow;
 
 class ChessBoard3D extends StatefulWidget {
   final String fen;
@@ -26,6 +28,8 @@ class ChessBoard3D extends StatefulWidget {
   final String? animateFrom;
   final String? animateTo;
   final bool isFlagged;
+  final String? localModelsPath;
+  final List<BoardArrow> arrows;
 
   const ChessBoard3D({
     Key? key,
@@ -40,6 +44,8 @@ class ChessBoard3D extends StatefulWidget {
     this.animateFrom,
     this.animateTo,
     this.isFlagged = false,
+    this.localModelsPath,
+    this.arrows = const [],
   }) : super(key: key);
 
   @override
@@ -62,7 +68,13 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
     scene.light.setColor(Colors.white, 1.0, 1.0, 1.0);
 
     // Add board
-    final board = Object(fileName: 'assets/models/board.obj', position: Vector3(0, 0, 0));
+    String boardFileName = 'assets/models/board.obj';
+    bool boardIsAsset = true;
+    if (widget.localModelsPath != null) {
+      boardFileName = '${widget.localModelsPath}/board.obj';
+      boardIsAsset = false;
+    }
+    final board = Object(fileName: boardFileName, isAsset: boardIsAsset, position: Vector3(0, 0, 0));
     scene.world.add(board);
     
     _updatePieces();
@@ -139,6 +151,8 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
       _addPieceObj(widget.animatingPiece!, currentCol, currentRow);
     }
     
+    _updateArrows();
+    
     // Re-render
     _scene!.update();
   }
@@ -167,16 +181,57 @@ class _ChessBoard3DState extends State<ChessBoard3D> {
     else if (lowerChar == 'k') pieceName = 'king';
 
     final colorPrefix = isWhite ? 'white' : 'black';
-    final fileName = 'assets/models/${colorPrefix}_$pieceName.obj';
+    String fileName = 'assets/models/${colorPrefix}_$pieceName.obj';
+    bool isAsset = true;
+    if (widget.localModelsPath != null) {
+      fileName = '${widget.localModelsPath}/${colorPrefix}_$pieceName.obj';
+      isAsset = false;
+    }
 
     final piece = Object(
       fileName: fileName,
+      isAsset: isAsset,
       position: Vector3(x, 0.0, z),
       scale: Vector3(1.0, 1.0, 1.0),
     );
     
     _scene!.world.add(piece);
     _pieceObjects.add(piece);
+  }
+
+  void _updateArrows() {
+    // If arrows changed, update them. We will add arrow objects to _pieceObjects so they get cleared.
+    for (final arrow in widget.arrows) {
+      if (arrow.fromSquare.length >= 2 && arrow.toSquare.length >= 2) {
+        final fromCoord = _squareToColRow(arrow.fromSquare);
+        final toCoord = _squareToColRow(arrow.toSquare);
+        
+        double x1 = fromCoord[0] - 3.5;
+        double z1 = fromCoord[1] - 3.5;
+        double x2 = toCoord[0] - 3.5;
+        double z2 = toCoord[1] - 3.5;
+        
+        if (widget.isFlipped) {
+          x1 = -x1; z1 = -z1;
+          x2 = -x2; z2 = -z2;
+        }
+        
+        final dx = x2 - x1;
+        final dz = z2 - z1;
+        final length = math.sqrt(dx*dx + dz*dz);
+        final angle = math.atan2(-dx, -dz); // The arrow.obj points along -Z, so we rotate it.
+        
+        final arrowObj = Object(
+          fileName: 'assets/models/arrow.obj',
+          isAsset: true,
+          position: Vector3(x1, 0.0, z1),
+          rotation: Vector3(0.0, angle * 180 / math.pi, 0.0),
+          scale: Vector3(1.0, 1.0, length), // Scale Z to match length
+        );
+        _scene!.world.add(arrowObj);
+        _pieceObjects.add(arrowObj);
+      }
+    }
   }
 
   String _colRowToSquare(int col, int row) {

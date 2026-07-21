@@ -599,12 +599,12 @@ class _RenderProgressDialogState extends State<RenderProgressDialog> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.accentRed),
                     ),
-                    child: SingleChildScrollView(
-                      child: Text(
-                        currentJob.errorMessage ?? 'Unknown error occurred.',
-                        style: const TextStyle(color: AppColors.textPrimary, fontFamily: 'Courier', fontSize: 12),
-                        textAlign: TextAlign.left,
-                      ),
+                      child: SingleChildScrollView(
+                        child: SelectableText(
+                          currentJob.errorMessage ?? 'Unknown error occurred.',
+                          style: const TextStyle(color: AppColors.textPrimary, fontFamily: 'Courier', fontSize: 12),
+                          textAlign: TextAlign.left,
+                        ),
                     ),
                   ),
                   const SizedBox(height: 24),
