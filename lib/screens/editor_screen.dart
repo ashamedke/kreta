@@ -215,12 +215,6 @@ class _EditorScreenState extends State<EditorScreen> {
                 tooltip: 'Select & Transform',
                 onPressed: () => selection.setToolMode(ToolMode.select),
               ),
-              IconButton(
-                icon: const Icon(Icons.edit_outlined),
-                color: selection.toolMode == ToolMode.drawArrow ? _accent : _textSec,
-                tooltip: 'Draw Arrow',
-                onPressed: () => selection.setToolMode(ToolMode.drawArrow),
-              ),
             ],
           ),
         );
